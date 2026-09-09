@@ -27,16 +27,32 @@ export function transcribePcm16k(samples: Float32Array, config: SherpaClientConf
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      reject(new Error(detail));
+      // 失败必关连接：onerror/send 抛错路径否则 hanging
+      try {
+        socket.close();
+      } finally {
+        reject(new Error(detail));
+      }
     };
     const succeed = (raw: string) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      socket.send("Done");
-      socket.close();
+      // offline 整句一回包即最终结果（与官方 sequential 客户端一致），故首帧 resolve；
+      // send 本身可抛错，包 try/finally 保证连接必关
+      try {
+        socket.send("Done");
+      } finally {
+        socket.close();
+      }
       resolve({ text: extractText(raw), raw });
     };
+    if (config.signal?.aborted === true) {
+      fail("aborted");
+      return;
+    }
+    const onAbort = () => fail("aborted");
+    config.signal?.addEventListener("abort", onAbort, { once: true });
     socket.onopen = () => {
       try {
         const payload = buildOfflineWsPayload(TARGET_SAMPLE_RATE, samples);
@@ -47,7 +63,8 @@ export function transcribePcm16k(samples: Float32Array, config: SherpaClientConf
         fail(error instanceof Error ? error.message : String(error));
       }
     };
-    socket.onmessage = (event) => {
+    socket.onmessage = (event: MessageEvent) => {
+      config.signal?.removeEventListener("abort", onAbort);
       succeed(String(event.data));
     };
     socket.onerror = () => {

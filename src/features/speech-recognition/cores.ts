@@ -56,6 +56,7 @@ class SpeechController {
   private starting = false;
   // 代际号：dispose 自增，过期异步（startCapture/transcribe 回包）凭此失效
   private generation = 0;
+  private transcribeAbort: AbortController | null = null;
 
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     this.plugin = plugin;
@@ -88,6 +89,8 @@ class SpeechController {
 
   /** 卸载时同步释放：停止采集并丢弃分片，不等待识别返回 */
   dispose(): void {
+    this.transcribeAbort?.abort();
+    this.transcribeAbort = null;
     this.generation++;
     this.starting = false;
     this.session?.stop();
@@ -146,6 +149,9 @@ class SpeechController {
     if (this.state !== "recording") return;
     this.state = "transcribing";
     const generation = this.generation;
+    this.transcribeAbort?.abort();
+    const controller = new AbortController();
+    this.transcribeAbort = controller;
     new Notice(t("recognition.recordingStopped"), 2000);
     try {
       const merged = mergeInt16Chunks(this.chunks);
@@ -156,15 +162,18 @@ class SpeechController {
         return;
       }
       const { host, port } = this.plugin.settings;
-      const result = await transcribePcm16k(int16ToFloat32Normalized(merged), { host, port });
+      const result = await transcribePcm16k(int16ToFloat32Normalized(merged), { host, port, signal: controller.signal });
       // 卸载后回包不再投递：不插光标、不写剪贴板
       if (generation !== this.generation) return;
       await this.deliverResult(result.text);
     } catch (error) {
       if (generation !== this.generation) return;
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof Error && error.message === "aborted") return;
       new Notice(t("recognition.recognizeFailed", { detail: this.toErrorDetail(error) }), 5000);
     } finally {
       if (this.state === "transcribing" && generation === this.generation) this.state = "idle";
+      if (this.transcribeAbort === controller) this.transcribeAbort = null;
     }
   }
 

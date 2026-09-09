@@ -4,6 +4,8 @@ export interface SherpaClientConfig {
   host: string;
   /** 服务监听端口 */
   port: number;
+  /** 取消信号：abort 时关闭连接并 reject，调用方凭此在卸载/重触发时取消 */
+  signal?: AbortSignal;
 }
 
 /** 识别结果：text 为解析出的文本，raw 为服务端原始回包 */
