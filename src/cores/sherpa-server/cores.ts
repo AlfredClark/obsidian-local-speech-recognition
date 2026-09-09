@@ -188,11 +188,29 @@ class SherpaServer implements SherpaServerManager {
     if (this.restarting) return { ok: false, detail: "already-restarting" };
     this.restarting = true;
     try {
-      this.stop();
+      this.stopImmediate();
       return await this.start(config);
     } finally {
       this.restarting = false;
     }
+  }
+
+  /**
+   * 同步强停当前进程：restart 专用，老进程不让端口，避免新进程探活到旧进程或 EADDRINUSE。
+   * 正常 stop() 仍走 SIGTERM 宽限，仅重启路径用强杀换取端口立即可用。
+   */
+  private stopImmediate(): void {
+    this.cancelProbe?.();
+    this.cancelProbe = null;
+    if (this.killTimer !== null) {
+      window.clearTimeout(this.killTimer);
+      this.killTimer = null;
+    }
+    this.clearReadyTimer();
+    if (this.handle !== null) this.releasePipes(this.handle);
+    this.killNow();
+    this.handle = null;
+    this.setStatus("stopped");
   }
 
   /**
@@ -215,7 +233,14 @@ class SherpaServer implements SherpaServerManager {
       // stop/dispose 置 true：在途 probe 回包与后续事件一律失效，不翻活
       let cancelled = false;
       this.cancelProbe = () => {
+        // 取消即结算：stop-during-start 不可悬挂等待中的 start() 调用方
+        if (cancelled) return;
         cancelled = true;
+        if (settled) return;
+        settled = true;
+        this.clearReadyTimer();
+        this.cancelProbe = null;
+        resolve({ ok: false, detail: "cancelled" });
       };
       const fail = (detail: string) => {
         if (cancelled) return;
@@ -402,6 +427,7 @@ export function toServerConfig(plugin: LocalSpeechRecognitionPlugin): SherpaServ
  * @returns 可展示的详情文本
  */
 export function resolveDetail(detail: string | undefined): string {
+  // 缺失项键与 validateSherpaConfig 的 TranslationKey 返回值同源，改名即编译报错（返回处），此处透传展示
   if (detail === undefined) return "";
   if (detail === "settings.missingBinaryPath") return t("settings.missingBinaryPath");
   if (detail === "settings.missingModelPath") return t("settings.missingModelPath");

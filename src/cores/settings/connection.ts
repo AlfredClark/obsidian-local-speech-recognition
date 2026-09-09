@@ -9,17 +9,33 @@ export const CONNECTION_TEST_TIMEOUT_MS = 5000;
 export function openWebSocket(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
+    let settled = false;
     const timer = window.setTimeout(() => {
-      socket.close();
+      if (settled) return;
+      settled = true;
+      try {
+        socket.close();
+      } catch {
+        // 关闭失败忽略：本次已判超时
+      }
       reject(new Error("timeout"));
     }, CONNECTION_TEST_TIMEOUT_MS);
     socket.onopen = () => {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timer);
       socket.close();
       resolve();
     };
     socket.onerror = () => {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timer);
+      try {
+        socket.close();
+      } catch {
+        // 关闭失败忽略：本次已判不可达
+      }
       reject(new Error("unreachable"));
     };
   });

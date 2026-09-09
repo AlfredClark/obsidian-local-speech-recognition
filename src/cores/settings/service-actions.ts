@@ -41,6 +41,9 @@ export async function startService(plugin: LocalSpeechRecognitionPlugin): Promis
   const result = await getSherpaServer().start(toServerConfig(plugin));
   if (result.ok) {
     new Notice(t("settings.serverStarted"), 3000);
+  } else if (result.detail === "cancelled") {
+    // 用户在启动中途主动停止属预期行为，不按失败打扰
+    return;
   } else if (result.detail === "already-running") {
     new Notice(t("settings.serverAlreadyRunning"), 3000);
   } else {
@@ -67,6 +70,9 @@ export async function restartService(plugin: LocalSpeechRecognitionPlugin): Prom
   const result = await getSherpaServer().restart(toServerConfig(plugin));
   if (result.ok) {
     new Notice(t("settings.serverStarted"), 3000);
+  } else if (result.detail === "cancelled") {
+    // 用户在启动中途主动停止属预期行为，不按失败打扰
+    return;
   } else {
     new Notice(t("settings.serverStartFailed", { detail: resolveDetail(result.detail) }), 5000);
   }

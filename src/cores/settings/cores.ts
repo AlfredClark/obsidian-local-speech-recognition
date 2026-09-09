@@ -61,6 +61,7 @@ export class SettingsTab extends PluginSettingTab {
     // Tab 与插件同寿命：用 plugin.register 托管退订，避免热重载残留闭包
     plugin.register(unsubscribe);
     void this.microphones.refreshSilent().then(() => {
+      // 成功失败都重渲染一次：失败时下拉框仍需按空缓存绘制
       void this.update();
     });
   }

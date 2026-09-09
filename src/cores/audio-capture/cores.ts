@@ -37,17 +37,20 @@ export async function startCapture(deviceId: string, onChunk: (pcm16: Int16Array
       autoGainControl: false,
     },
   });
-  const context = new AudioContext();
+  let context: AudioContext | null = null;
   try {
-    await loadCaptureWorklet(context);
-    const source = context.createMediaStreamSource(stream);
-    const node = new AudioWorkletNode(context, CAPTURE_WORKLET_NAME);
+    // created 别名供 try 内使用：await 后 let 窄化失效，const 保证后续引用非空
+    const created = new AudioContext();
+    context = created;
+    await loadCaptureWorklet(created);
+    const source = created.createMediaStreamSource(stream);
+    const node = new AudioWorkletNode(created, CAPTURE_WORKLET_NAME);
     let stopped = false;
     node.port.onmessage = (event: MessageEvent) => {
       if (stopped) return;
       // worklet 只应投递 Float32Array 批帧：flush 回声/坏帧直接丢弃，不污染降采样
       if (!(event.data instanceof Float32Array)) return;
-      const resampled = downsampleFloat32Mono(event.data, context.sampleRate, TARGET_SAMPLE_RATE);
+      const resampled = downsampleFloat32Mono(event.data, created.sampleRate, TARGET_SAMPLE_RATE);
       onChunk(float32ToInt16Pcm(resampled));
     };
     source.connect(node);
@@ -64,13 +67,19 @@ export async function startCapture(deviceId: string, onChunk: (pcm16: Int16Array
         node.disconnect();
         source.disconnect();
         stream.getTracks().forEach((track) => track.stop());
-        void context.close();
+        void created.close();
       },
     };
   } catch (error) {
     // 构造期抛错（worklet 加载/createSource/WorkletNode 任一）：关流+关 context 后上抛
     stream.getTracks().forEach((track) => track.stop());
-    await context.close();
+    if (context !== null) {
+      try {
+        await context.close();
+      } catch {
+        // 关闭失败忽略：原始错误优先上抛
+      }
+    }
     throw error;
   }
 }

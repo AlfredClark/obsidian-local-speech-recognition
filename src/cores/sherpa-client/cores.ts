@@ -20,7 +20,11 @@ export function transcribePcm16k(samples: Float32Array, config: SherpaClientConf
     const timer = window.setTimeout(() => {
       if (settled) return;
       settled = true;
-      socket.close();
+      try {
+        socket.close();
+      } catch {
+        // 关闭失败忽略：本次已判超时
+      }
       reject(new Error("timeout"));
     }, TRANSCRIBE_TIMEOUT_MS);
     const fail = (detail: string) => {
