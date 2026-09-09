@@ -40,7 +40,9 @@
 │   │   ├── i18n/            # 国际化模块：手动实现的多语言支持
 │   │   │   └── locales/     # 语言资源目录（文件说明见核心能力）
 │   │   ├── settings/        # 设置模块：持久化设置 + 声明式设置页
-│   ├── features/            # 业务功能：用户可感知的具体功能（暂无模块）
+│   │   ├── sherpa-server/   # 服务管理：sherpa-onnx 子进程生命周期（状态见核心能力）
+│   ├── features/            # 业务功能：用户可感知的具体功能
+│   │   └── sherpa-server/   # 服务编排：autoStart 拉起 + 卸载回收（状态见核心能力）
 │   ├── utils/               # 无状态纯函数工具（如 svelte 组件挂载，说明见核心能力）
 │   └── main.ts              # 插件入口：仅调用 initCores()/initFeatures() 聚合初始化
 ├── .editorconfig            # 编辑器统一格式（与 .prettierrc 对齐）
@@ -84,7 +86,16 @@
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 可折叠分组约定：分组条目抽为 `getXxxItems(): SettingGroupItem<...>[]` 私有方法返回条目数组，容器形态经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；通用设置组保持内联，不走该方法；条目增删只改 `getXxxItems`，不碰容器逻辑；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐
 - 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给私有方法（如 `testConnection()`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用
+- 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 刷新；配置变更仅手动生效，不自动重启
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
+
+### sherpa-server（服务管理）
+
+- 三层分工：`utils/sherpa-process.ts` 纯函数（参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`，无状态无 init）；`cores/sherpa-server` 持有进程句柄与 `stopped/starting/running/error` 状态，导出 `start/stop/restart/getStatus/isRunning/subscribeStatus` 单例（`getSherpaServer()`）；`features/sherpa-server` 只做 autoStart 编排 + 向 `cleanups` 注册同步回收
+- 进程拉起：`Platform.isDesktop` 守卫后同步 `require()` 取 `spawn`（src 内零顶层 `node:` 导入，含 type-only，窄 `ManagedProcess` 结构类型代替 `ChildProcess`）；`spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] })`，日志走 console；ws 轮询探测 open 即 running，超时/异常退出置 error 并透出退出码；`starting/running` 重复 start 直接返回 `already-running`
+- 状态广播：`setStatus` 触发订阅者，设置页与外部调用方靠其刷新；`stop()` 必须同步 kill（适配 `cleanups: Array<() => void>`）
+- 退出释放：应用关闭不保证走插件 `onunload`，feature 层同时订阅 `workspace.on("quit")` 与窗口 `beforeunload`，双路径调用同步强杀的 `dispose()`（直接 SIGKILL，不等 SIGTERM 宽限回调）；插件禁用/卸载仍走 `stop()` 正常关闭流程
+- sense-voice int8 占位参数：`--port/--num-threads` + `--sherpa-onnx-sense-voice-model=<modelDir>/model.int8.onnx` + `--sherpa-onnx-tokens=<modelDir>/tokens.txt`，实测后按真实模型结构调整 `buildSherpaArgs`
 
 ## utils（工具）
 
@@ -94,6 +105,7 @@
 - `svelte.ts`：`mountComponent(target, Component, props?)` 将 Svelte 组件挂载到目标容器（如视图的 `contentEl`），返回 `{ instance, destroy() }`；destroy 卸载组件并清空容器。组件样式经构建配置 `css: "injected"` 注入 `<head>`，卸载后样式标签残留，但编译期 class 哈希保证样式隔离
 - `ambient.d.ts`：`*.svelte` 模块声明，tsc 层放宽 props 类型，精确类型由 svelte-check 校验（build 命令内执行）；不与 `svelte.ts` 同名——TS 对同名 .ts/.d.ts 只保留 .ts，且模块文件内 `declare module` 会被视为模块增强而非法
 - `.svelte` 组件文件属于模块特有文件，置于所属模块目录下（如 `features/<模块>/components/`），不受三段式约束
+- `sherpa-process.ts`：纯函数（参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
 
 ## 代码规范
 
@@ -101,7 +113,8 @@
 2. **类型**：strict 全开（含 `noUncheckedIndexedAccess`）；禁止 `any` 与隐式 any
 3. **模块**：`cores/`（核心能力）与 `features/`（业务功能）下的每个模块均按三段式组织：`index.ts`（统一出口，仅 re-export）、`types.ts`（类型定义）、`core.ts`（核心逻辑，导出 `init<模块>()` 初始化方法）；各模块 init 方法由 `src/cores/index.ts`/`src/features/index.ts` 分别聚合为 `initCores()`/`initFeatures()`，main.ts 各调用一次；init 方法参数一律使用具体类 `LocalSpeechRecognitionPlugin`，且导入一律为 `import type`（类型层循环在编译期擦除，运行时无循环）；模块特有文件（如 i18n 的 `locales/`）直接置于模块目录下，不受三段式约束
 4. **注释**：中文，写"为什么"而非"是什么"；不做多余注释。导出声明（类/接口/函数/常量/属性）一律使用 JSDoc（`/** */`），内部逻辑用行注释；`@param`/`@returns` 仅在参数或返回值存在需要说明的语义时使用，不机械全量添加；纯 re-export 的 index.ts 无需注释
-5. **约束**：禁止 `import node:*` 与 Electron API（`obsidianmd/no-nodejs-modules` 规则）
+5. **约束**：桌面 Node 能力（`child_process` 等）须 `Platform.isDesktop` 守卫后同步 `require()`（Obsidian 以 CJS 加载插件，原生动态 `import("node:...")` 会被当网络模块抓取而失败；`require` 处加带描述的 eslint-disable），
+   src 内禁止顶层 `node:` 导入（含 `import type`，用窄结构类型代替 Node 类型），对应 `obsidianmd/no-nodejs-modules` 规则；禁止 Electron API
 6. **依赖**：确认可 bundle 或需加入 esbuild `external` 列表
 7. **格式**：由 `.prettierrc` 统一控制——2 空格缩进、双引号、128 列、LF 行尾（与 `.editorconfig` 一致）
 

@@ -1,4 +1,5 @@
 import type LocalSpeechRecognitionPlugin from "../main";
+import { initSherpaServer } from "./sherpa-server";
 
 /** 各 feature 注册的清理函数，cleanFeatures 在卸载时依序回收 */
 const cleanups: Array<() => void> = [];
@@ -9,11 +10,10 @@ const cleanups: Array<() => void> = [];
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
  */
 export async function initFeatures(plugin: LocalSpeechRecognitionPlugin): Promise<void> {
-  // 首个 feature 落地后在此处依序调用各模块的 init 方法
-  void plugin;
+  cleanups.push(await initSherpaServer(plugin));
 }
 
-/** 卸载时依序回收各 feature 注册的资源（视图叶子等） */
+/** 卸载时依序回收各 feature 注册的资源（视图叶子、服务进程等） */
 export function cleanFeatures(): void {
   cleanups.forEach((cleanup) => cleanup());
 }

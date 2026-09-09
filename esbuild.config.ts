@@ -47,7 +47,10 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
+    // builtinModules 仅含无前缀名（如 child_process），node: 前缀形式需显式追加，
+    // 否则 dynamic import("node:child_process") 会被 esbuild 尝试打包而失败
     ...builtinModules,
+    ...builtinModules.map((name) => `node:${name}`),
   ],
   format: "cjs",
   target: "es2021",

@@ -1,6 +1,7 @@
 import { Notice, PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
+import { getSherpaServer, resolveDetail, toServerConfig } from "../sherpa-server";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 
@@ -84,6 +85,10 @@ export class SettingsTab extends PluginSettingTab {
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
+    // 服务状态变化时刷新设置页：started/stopped/error 都会改变按钮显隐
+    getSherpaServer().subscribeStatus(() => {
+      void this.update();
+    });
   }
 
   getSettingDefinitions(): SettingDefinitionItem<keyof LocalSpeechRecognitionPluginSettings>[] {
@@ -224,6 +229,42 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: t("settings.serviceStart"),
+        desc: t("settings.serviceStartDesc"),
+        visible: () => !getSherpaServer().isRunning(),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.serviceStart")).onClick(() => {
+              void this.startService();
+            }),
+          );
+        },
+      },
+      {
+        name: t("settings.serviceStop"),
+        desc: t("settings.serviceStopDesc"),
+        visible: () => getSherpaServer().isRunning(),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.serviceStop")).onClick(() => {
+              void this.stopService();
+            }),
+          );
+        },
+      },
+      {
+        name: t("settings.serviceRestart"),
+        desc: t("settings.serviceRestartDesc"),
+        visible: () => getSherpaServer().isRunning(),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.serviceRestart")).onClick(() => {
+              void this.restartService();
+            }),
+          );
+        },
+      },
+      {
         name: t("settings.inputMode"),
         desc: t("settings.inputModeDesc"),
         control: {
@@ -251,6 +292,43 @@ export class SettingsTab extends PluginSettingTab {
       new Notice(t("settings.connectionSucceeded"), 3000);
     } catch (error) {
       new Notice(t("settings.connectionFailed", { detail: toErrorDetail(error) }), 3000);
+    }
+  }
+
+  /**
+   * 手动启动服务：按当前设置拉起进程，成功失败均经 Notice 提示，
+   * 状态广播会触发设置页刷新，无需此处手动 update。
+   */
+  private async startService(): Promise<void> {
+    new Notice(t("settings.serverStarting"), 1000);
+    const result = await getSherpaServer().start(toServerConfig(this.plugin));
+    if (result.ok) {
+      new Notice(t("settings.serverStarted"), 3000);
+    } else if (result.detail === "already-running") {
+      new Notice(t("settings.serverAlreadyRunning"), 3000);
+    } else {
+      new Notice(t("settings.serverStartFailed", { detail: resolveDetail(result.detail) }), 5000);
+    }
+  }
+
+  /**
+   * 手动关闭服务：同步 kill 进程，状态广播触发按钮显隐刷新。
+   */
+  private stopService(): void {
+    getSherpaServer().stop();
+    new Notice(t("settings.serverStopped"), 3000);
+  }
+
+  /**
+   * 手动重启服务：先同步关闭再按当前设置拉起，结果经 Notice 提示。
+   */
+  private async restartService(): Promise<void> {
+    new Notice(t("settings.serverStarting"), 1000);
+    const result = await getSherpaServer().restart(toServerConfig(this.plugin));
+    if (result.ok) {
+      new Notice(t("settings.serverStarted"), 3000);
+    } else {
+      new Notice(t("settings.serverStartFailed", { detail: resolveDetail(result.detail) }), 5000);
     }
   }
 }
