@@ -40,36 +40,39 @@ export async function startCapture(deviceId: string, onChunk: (pcm16: Int16Array
   const context = new AudioContext();
   try {
     await loadCaptureWorklet(context);
+    const source = context.createMediaStreamSource(stream);
+    const node = new AudioWorkletNode(context, CAPTURE_WORKLET_NAME);
+    let stopped = false;
+    node.port.onmessage = (event: MessageEvent) => {
+      if (stopped) return;
+      // worklet 只应投递 Float32Array 批帧：flush 回声/坏帧直接丢弃，不污染降采样
+      if (!(event.data instanceof Float32Array)) return;
+      const resampled = downsampleFloat32Mono(event.data, context.sampleRate, TARGET_SAMPLE_RATE);
+      onChunk(float32ToInt16Pcm(resampled));
+    };
+    source.connect(node);
+    return {
+      sampleRate: TARGET_SAMPLE_RATE,
+      stop: () => {
+        // stop 幂等：快捷键重复触发与卸载清理可能并发调用
+        if (stopped) return;
+        stopped = true;
+        // 尾帧回收：不足一批的残留经 flush 讨要，onmessage 侧 stopped 守卫先置 true，
+        // flush 回包被丢弃属预期（stop 即停，后续 stopAndTranscribe 只用已累积分片）
+        node.port.postMessage("flush");
+        node.port.close();
+        node.disconnect();
+        source.disconnect();
+        stream.getTracks().forEach((track) => track.stop());
+        void context.close();
+      },
+    };
   } catch (error) {
+    // 构造期抛错（worklet 加载/createSource/WorkletNode 任一）：关流+关 context 后上抛
     stream.getTracks().forEach((track) => track.stop());
     await context.close();
     throw error;
   }
-  const source = context.createMediaStreamSource(stream);
-  const node = new AudioWorkletNode(context, CAPTURE_WORKLET_NAME);
-  let stopped = false;
-  node.port.onmessage = (event) => {
-    if (stopped) return;
-    const resampled = downsampleFloat32Mono(event.data as Float32Array, context.sampleRate, TARGET_SAMPLE_RATE);
-    onChunk(float32ToInt16Pcm(resampled));
-  };
-  source.connect(node);
-  return {
-    sampleRate: TARGET_SAMPLE_RATE,
-    stop: () => {
-      // stop 幂等：快捷键重复触发与卸载清理可能并发调用
-      if (stopped) return;
-      stopped = true;
-      // 尾帧回收：不足一批的残留经 flush 讨要，onmessage 侧 stopped 守卫先置 true，
-      // flush 回包被丢弃属预期（stop 即停，后续 stopAndTranscribe 只用已累积分片）
-      node.port.postMessage("flush");
-      node.port.close();
-      node.disconnect();
-      source.disconnect();
-      stream.getTracks().forEach((track) => track.stop());
-      void context.close();
-    },
-  };
 }
 
 /**
