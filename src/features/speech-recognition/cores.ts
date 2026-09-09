@@ -1,5 +1,4 @@
 import { MarkdownView, Notice, Platform } from "obsidian";
-import type { StateEffect } from "@codemirror/state";
 import { startCapture } from "../../cores/audio-capture";
 import type { AudioCaptureSession } from "../../cores/audio-capture";
 import { transcribePcm16k } from "../../cores/sherpa-client";
@@ -193,8 +192,8 @@ class SpeechController {
     if (view !== null && view.getMode() === "source" && editor?.hasFocus() === true) {
       const cmView = getCodeMirrorEditorView(editor);
       if (cmView !== null) {
-        // 后处理注入点：setDiagnostics() 等 StateEffect 在此拼入，勿删 key，保持单事务原子性
-        const diagnosticsEffects: Array<StateEffect<unknown>> = [];
+        // 后处理注入点：setDiagnostics() 等 effect 在此拼入，勿删 key，保持单事务原子性
+        const diagnosticsEffects: Array<unknown> = [];
         try {
           const { from, to } = cmView.state.selection.main;
           cmView.dispatch({
