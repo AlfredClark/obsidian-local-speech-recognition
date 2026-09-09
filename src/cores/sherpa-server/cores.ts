@@ -12,6 +12,10 @@ import type { SherpaServerManager, SherpaServerResult } from "./types";
 interface LogStream {
   /** 订阅数据事件 */
   on(event: "data", listener: (chunk: unknown) => void): void;
+  /** 释放管道（Node Readable.destroy 子集，可选） */
+  destroy?: () => void;
+  /** 移除监听（可选，有则调用） */
+  removeAllListeners?: () => void;
 }
 
 /**
@@ -114,6 +118,10 @@ class SherpaServer implements SherpaServerManager {
   private readyTimer: number | null = null;
   /** 在途探测取消钩：spawnAndWait 注册，stop/dispose 调用后在途回包失效 */
   private cancelProbe: (() => void) | null = null;
+  /** 关闭信号升级计时器：stop 后可取消，避免 dispose 后误杀复用句柄 */
+  private killTimer: number | null = null;
+  /** restart 串行锁：stop 是 fire-and-forget，前一次 restart 未完成直接返回 busy */
+  private restarting = false;
 
   getStatus(): SherpaServerStatus {
     return this.status;
@@ -149,26 +157,43 @@ class SherpaServer implements SherpaServerManager {
   }
 
   stop(): void {
+    if (this.killTimer !== null) {
+      window.clearTimeout(this.killTimer);
+      this.killTimer = null;
+    }
     this.cancelProbe?.();
     this.cancelProbe = null;
     this.clearReadyTimer();
+    if (this.handle !== null) this.releasePipes(this.handle);
     this.killProcess();
     this.handle = null;
     this.setStatus("stopped");
   }
 
   dispose(): void {
+    if (this.killTimer !== null) {
+      window.clearTimeout(this.killTimer);
+      this.killTimer = null;
+    }
     this.cancelProbe?.();
     this.cancelProbe = null;
     this.clearReadyTimer();
+    if (this.handle !== null) this.releasePipes(this.handle);
     this.killNow();
     this.handle = null;
     this.setStatus("stopped");
   }
 
   async restart(config: SherpaServerConfig): Promise<SherpaServerResult> {
-    this.stop();
-    return this.start(config);
+    // stop 只发 SIGTERM 不等退出：串行化避免老进程占端口导致新进程 EADDRINUSE
+    if (this.restarting) return { ok: false, detail: "already-restarting" };
+    this.restarting = true;
+    try {
+      this.stop();
+      return await this.start(config);
+    } finally {
+      this.restarting = false;
+    }
   }
 
   /**
@@ -199,6 +224,7 @@ class SherpaServer implements SherpaServerManager {
         settled = true;
         this.clearReadyTimer();
         this.cancelProbe = null;
+        this.releasePipes(handle);
         this.handle = null;
         this.setStatus("error");
         resolve({ ok: false, detail });
@@ -262,6 +288,7 @@ class SherpaServer implements SherpaServerManager {
 
   /** 停止尚在就绪探测中的子进程：只杀进程不清状态，状态由 fail/succeed 收尾 */
   private stopSpawned(handle: ManagedProcess): void {
+    this.releasePipes(handle);
     if (!handle.killed) {
       handle.kill();
     }
@@ -275,7 +302,9 @@ class SherpaServer implements SherpaServerManager {
     const handle = this.handle;
     if (handle === null || handle.exitCode !== null || handle.signalCode !== null) return;
     handle.kill("SIGTERM");
-    window.setTimeout(() => {
+    if (this.killTimer !== null) window.clearTimeout(this.killTimer);
+    this.killTimer = window.setTimeout(() => {
+      this.killTimer = null;
       if (handle.exitCode === null && handle.signalCode === null) {
         handle.kill("SIGKILL");
       }
@@ -291,6 +320,26 @@ class SherpaServer implements SherpaServerManager {
     const handle = this.handle;
     if (handle === null || handle.exitCode !== null || handle.signalCode !== null) return;
     handle.kill("SIGKILL");
+  }
+
+  /**
+   * 释放子进程管道：pipe 无人消费会阻塞子进程，kill 后残留 fd/handler 会泄漏；
+   * destroy/removeAllListeners 均为可选，有则调用，无则跳过。
+   * @param handle 需释放管道的进程句柄
+   */
+  private releasePipes(handle: ManagedProcess): void {
+    handle.stdout?.removeAllListeners?.();
+    handle.stderr?.removeAllListeners?.();
+    try {
+      handle.stdout?.destroy?.();
+    } catch {
+      /* ignore */
+    }
+    try {
+      handle.stderr?.destroy?.();
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
