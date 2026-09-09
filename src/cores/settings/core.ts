@@ -1,5 +1,5 @@
-import { PluginSettingTab } from "obsidian";
-import type { SettingDefinitionItem } from "obsidian";
+import { Notice, PluginSettingTab } from "obsidian";
+import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -8,6 +8,13 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   collapsible: false,
   language: "system",
+  binaryPath: "",
+  modelPath: "",
+  host: "127.0.0.1",
+  port: 6006,
+  numThreads: 4,
+  autoStartServer: false,
+  inputMode: "toggle",
 };
 
 /**
@@ -18,6 +25,42 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
 export async function initSettings(plugin: LocalSpeechRecognitionPlugin): Promise<void> {
   plugin.settings = await loadSettings(plugin);
   plugin.addSettingTab(new SettingsTab(plugin));
+}
+
+/** 连接测试超时毫秒数：局域网拨号无响应时兜底失败，避免按钮长挂起 */
+const CONNECTION_TEST_TIMEOUT_MS = 5000;
+
+/**
+ * 拨号指定 websocket 地址：open 即 resolve 并关闭连接，
+ * error/超时即 reject；调用方只关心可达性，不消费消息。
+ * @param url 待拨号的 websocket 地址
+ */
+function openWebSocket(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url);
+    const timer = window.setTimeout(() => {
+      socket.close();
+      reject(new Error("timeout"));
+    }, CONNECTION_TEST_TIMEOUT_MS);
+    socket.onopen = () => {
+      window.clearTimeout(timer);
+      socket.close();
+      resolve();
+    };
+    socket.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("unreachable"));
+    };
+  });
+}
+
+/**
+ * 错误详情提取：Error 取 message，其余类型转字符串，保证 Notice 文案可读。
+ * @param error 捕获到的未知错误
+ * @returns 可展示的错误详情文本
+ */
+function toErrorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -76,6 +119,7 @@ export class SettingsTab extends PluginSettingTab {
           },
         ],
       },
+      this.buildCollapsibleSection(t("settings.sherpa"), t("settings.sherpaDesc"), this.getSherpaItems()),
     ];
   }
 
@@ -86,5 +130,127 @@ export class SettingsTab extends PluginSettingTab {
       notifyLanguageChange();
     }
     void this.update();
+  }
+
+  /**
+   * 可折叠分组：collapsible 开启时渲染为可导航子页（page），否则内联展开（group）。
+   * 两种容器共用条目，仅容器形态由 collapsible 决定。
+   */
+  private buildCollapsibleSection<K extends string>(
+    name: string,
+    desc: string | undefined,
+    items: SettingGroupItem<K>[],
+  ): SettingDefinitionItem<K> {
+    return this.plugin.settings.collapsible
+      ? { type: "page", name, desc, items }
+      : { type: "group", name, heading: name, items };
+  }
+
+  /**
+   * sherpa-onnx 服务条目：服务端路径、监听地址、线程数与触发模式等。
+   * 与其他可折叠分组共用条目结构，容器形态由 collapsible 决定。
+   */
+  private getSherpaItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
+    return [
+      {
+        name: t("settings.binaryPath"),
+        desc: t("settings.binaryPathDesc"),
+        control: {
+          type: "text",
+          key: "binaryPath",
+          defaultValue: "",
+          placeholder: t("settings.binaryPathPlaceholder"),
+        },
+      },
+      {
+        name: t("settings.modelPath"),
+        desc: t("settings.modelPathDesc"),
+        control: {
+          type: "text",
+          key: "modelPath",
+          defaultValue: "",
+          placeholder: t("settings.modelPathPlaceholder"),
+        },
+      },
+      {
+        name: t("settings.host"),
+        desc: t("settings.hostDesc"),
+        control: {
+          type: "text",
+          key: "host",
+          defaultValue: "127.0.0.1",
+          placeholder: t("settings.hostPlaceholder"),
+        },
+      },
+      {
+        name: t("settings.port"),
+        desc: t("settings.portDesc"),
+        control: {
+          type: "number",
+          key: "port",
+          defaultValue: 6006,
+          min: 1,
+          max: 65535,
+        },
+      },
+      {
+        name: t("settings.numThreads"),
+        desc: t("settings.numThreadsDesc"),
+        control: {
+          type: "number",
+          key: "numThreads",
+          defaultValue: 4,
+          min: 1,
+        },
+      },
+      {
+        name: t("settings.testConnection"),
+        desc: t("settings.testConnectionDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.testConnection")).onClick(() => {
+              void this.testConnection();
+            }),
+          );
+        },
+      },
+      {
+        name: t("settings.autoStartServer"),
+        desc: t("settings.autoStartServerDesc"),
+        control: {
+          type: "toggle",
+          key: "autoStartServer",
+          defaultValue: false,
+        },
+      },
+      {
+        name: t("settings.inputMode"),
+        desc: t("settings.inputModeDesc"),
+        control: {
+          type: "dropdown",
+          key: "inputMode",
+          defaultValue: "toggle",
+          options: {
+            toggle: t("settings.inputModeOptions.toggle"),
+            "push-to-talk": t("settings.inputModeOptions.push-to-talk"),
+          },
+        },
+      },
+    ];
+  }
+
+  /**
+   * 连接测试：按当前 host/port 拨号 sherpa-onnx websocket 服务，
+   * 连接建立即判活并关闭，不发送音频数据；结果经 Notice 提示。
+   */
+  private async testConnection(): Promise<void> {
+    const { host, port } = this.plugin.settings;
+    new Notice(t("settings.testingConnection"), 1000);
+    try {
+      await openWebSocket(`ws://${host}:${port}`);
+      new Notice(t("settings.connectionSucceeded"), 3000);
+    } catch (error) {
+      new Notice(t("settings.connectionFailed", { detail: toErrorDetail(error) }), 3000);
+    }
   }
 }

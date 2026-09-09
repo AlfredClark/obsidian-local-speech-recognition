@@ -81,6 +81,9 @@
 
 - `DEFAULT_SETTINGS` 提供默认值，`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底
 - 设置页使用 1.13.0+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，语言切换等联动即时生效
+- 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
+- 可折叠分组约定：分组条目抽为 `getXxxItems(): SettingGroupItem<...>[]` 私有方法返回条目数组，容器形态经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；通用设置组保持内联，不走该方法；条目增删只改 `getXxxItems`，不碰容器逻辑；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐
+- 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给私有方法（如 `testConnection()`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
 
 ## utils（工具）
