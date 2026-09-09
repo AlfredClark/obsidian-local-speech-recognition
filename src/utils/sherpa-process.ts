@@ -1,19 +1,6 @@
-/** sherpa-onnx websocket 服务的启动配置，由插件设置组装而来 */
-export interface SherpaServerConfig {
-  /** sherpa-onnx-offline-websocket-server 可执行文件路径 */
-  binaryPath: string;
-  /** 模型文件夹路径 */
-  modelPath: string;
-  /** 服务监听主机 */
-  host: string;
-  /** 服务监听端口 */
-  port: number;
-  /** 服务 CPU 线程数 */
-  numThreads: number;
-}
-
-/** sherpa-onnx 服务存活状态 */
-export type SherpaServerStatus = "stopped" | "starting" | "running" | "error";
+import type { TranslationKey } from "../cores/i18n/types";
+// 方向为例外：SherpaServerConfig 唯一源在 cores/sherpa-server/types，utils 仅借类型签名；type-only 跨层回指编译期擦除，运行时无循环。
+import type { SherpaServerConfig } from "../cores/sherpa-server/types";
 
 /**
  * 组装 websocket 服务地址。host 为空时回退 127.0.0.1，避免拼出非法地址。
@@ -30,7 +17,7 @@ export function resolveSherpaUrl(host: string, port: number): string {
  * @param config 待校验的服务配置
  * @returns 缺失项对应的 i18n 键，无缺失时返回 null
  */
-export function validateSherpaConfig(config: SherpaServerConfig): string | null {
+export function validateSherpaConfig(config: SherpaServerConfig): TranslationKey | null {
   if (config.binaryPath.trim() === "") return "settings.missingBinaryPath";
   if (config.modelPath.trim() === "") return "settings.missingModelPath";
   return null;

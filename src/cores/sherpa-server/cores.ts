@@ -1,9 +1,8 @@
 import { Platform } from "obsidian";
 import { buildSherpaArgs, resolveSherpaUrl, validateSherpaConfig } from "../../utils/sherpa-process";
-import type { SherpaServerConfig, SherpaServerStatus } from "../../utils/sherpa-process";
+import type { SherpaServerConfig, SherpaServerManager, SherpaServerResult, SherpaServerStatus } from "./types";
 import { t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
-import type { SherpaServerManager, SherpaServerResult } from "./types";
 
 /**
  * 可读流窄类型：仅消费子进程管道输出。

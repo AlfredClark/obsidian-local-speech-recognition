@@ -1,4 +1,19 @@
-import type { SherpaServerConfig, SherpaServerStatus } from "../../utils/sherpa-process";
+/** sherpa-onnx websocket 服务的启动配置，由插件设置组装而来 */
+export interface SherpaServerConfig {
+  /** sherpa-onnx-offline-websocket-server 可执行文件路径 */
+  binaryPath: string;
+  /** 模型文件夹路径 */
+  modelPath: string;
+  /** 服务监听主机 */
+  host: string;
+  /** 服务监听端口 */
+  port: number;
+  /** 服务 CPU 线程数 */
+  numThreads: number;
+}
+
+/** sherpa-onnx 服务存活状态 */
+export type SherpaServerStatus = "stopped" | "starting" | "running" | "error";
 
 /** 服务操作结果：ok 为是否成功，失败时 detail 携带可展示的错误详情 */
 export interface SherpaServerResult {

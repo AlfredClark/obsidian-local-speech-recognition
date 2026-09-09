@@ -78,7 +78,7 @@ export function transcribePcm16k(samples: Float32Array, config: SherpaClientConf
 }
 
 /**
- * 提取识别文本：服务端回包为 JSON，text 缺失或解析失败时回退原文，保证 console.log 始终有输出。
+ * 提取识别文本：服务端回包为 JSON，text 缺失或解析失败时回退原文，保证投递/Notice 始终有内容。
  * @param raw 服务端原始回包文本
  * @returns 识别文本
  */
