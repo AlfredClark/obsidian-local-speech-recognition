@@ -198,7 +198,8 @@ class SpeechController {
           const { from, to } = cmView.state.selection.main;
           cmView.dispatch({
             changes: { from, to, insert: text },
-            selection: { anchor: from, head: from + text.length },
+            // selection: { anchor: from, head: from + text.length },   // 自动选中输入文本
+            selection: { anchor: from + text.length },  // 光标自动移动到末尾
             effects: diagnosticsEffects,
             scrollIntoView: true,
           });
