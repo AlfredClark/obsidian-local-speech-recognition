@@ -49,6 +49,7 @@ export function buildSherpaArgs(config: SherpaServerConfig): string[] {
     `--port=${config.port}`,
     `--num-threads=${config.numThreads}`,
     `--sense-voice-model=${modelDir}/model.int8.onnx`,
+    `--sense-voice-use-itn=1`,
     `--tokens=${modelDir}/tokens.txt`,
   ];
 }
