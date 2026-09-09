@@ -69,15 +69,20 @@ function probeWebSocket(url: string): Promise<void> {
       settled = true;
       try {
         socket.close();
-      } finally {
-        reject(new Error("probe timeout"));
+      } catch {
+        /* ignore */
       }
+      reject(new Error("probe timeout"));
     }, PROBE_TIMEOUT_MS);
     socket.onopen = () => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      socket.close();
+      try {
+        socket.close();
+      } catch {
+        /* ignore */
+      }
       resolve();
     };
     socket.onerror = () => {
@@ -86,9 +91,10 @@ function probeWebSocket(url: string): Promise<void> {
       window.clearTimeout(timer);
       try {
         socket.close();
-      } finally {
-        reject(new Error("unreachable"));
+      } catch {
+        /* ignore */
       }
+      reject(new Error("unreachable"));
     };
   });
 }
@@ -188,6 +194,7 @@ class SherpaServer implements SherpaServerManager {
         cancelled = true;
       };
       const fail = (detail: string) => {
+        if (cancelled) return;
         if (settled) return;
         settled = true;
         this.clearReadyTimer();
@@ -197,7 +204,15 @@ class SherpaServer implements SherpaServerManager {
         resolve({ ok: false, detail });
       };
       const succeed = () => {
-        if (settled || cancelled) return;
+        if (settled) return;
+        // stop/dispose 后的晚到 open：不翻活 running，但必须 settle，避免 start() 永远 hanging
+        if (cancelled) {
+          settled = true;
+          this.clearReadyTimer();
+          this.cancelProbe = null;
+          resolve({ ok: false, detail: "cancelled" });
+          return;
+        }
         settled = true;
         this.clearReadyTimer();
         this.cancelProbe = null;
@@ -205,8 +220,10 @@ class SherpaServer implements SherpaServerManager {
         resolve({ ok: true });
       };
       handle.on("error", (error) => {
+        // 旧代进程的延迟事件不处理：句柄对不上说明已 stop/重启，只丢弃
+        if (cancelled) return;
         // 就绪后崩溃也感知：此前 fail/succeed 的 settled 守卫会吞掉，需区分阶段
-        if (this.getStatus() === "running" && this.handle !== null) {
+        if (this.handle === handle && this.getStatus() === "running") {
           this.clearReadyTimer();
           this.handle = null;
           this.setStatus("error");
@@ -215,7 +232,9 @@ class SherpaServer implements SherpaServerManager {
         fail(toErrorDetail(error));
       });
       handle.on("exit", (code) => {
-        if (this.getStatus() === "running" && this.handle !== null) {
+        // 旧代进程的延迟事件不处理：句柄对不上说明已 stop/重启，只丢弃
+        if (cancelled) return;
+        if (this.handle === handle && this.getStatus() === "running") {
           this.clearReadyTimer();
           this.handle = null;
           this.setStatus("error");
