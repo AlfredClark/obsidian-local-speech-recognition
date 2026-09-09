@@ -1,12 +1,11 @@
-import { Notice, PluginSettingTab } from "obsidian";
+import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
-import { getSherpaServer, resolveDetail, toServerConfig } from "../sherpa-server";
-import { enumerateAudioInputDevices } from "../audio-capture";
-import type { AudioDeviceInfo } from "../audio-capture";
-import { resolveSherpaUrl } from "../../utils/sherpa-process";
+import { getSherpaServer } from "../sherpa-server";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
+import { MicrophoneStore } from "./microphone-options";
+import { restartService, startService, stopService, testConnection } from "./service-actions";
 
 /** 设置默认值。data.json 缺失字段时（如旧版本升级）以此为兜底合并 */
 export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
@@ -32,42 +31,6 @@ export async function initSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   plugin.addSettingTab(new SettingsTab(plugin));
 }
 
-/** 连接测试超时毫秒数：局域网拨号无响应时兜底失败，避免按钮长挂起 */
-const CONNECTION_TEST_TIMEOUT_MS = 5000;
-
-/**
- * 拨号指定 websocket 地址：open 即 resolve 并关闭连接，
- * error/超时即 reject；调用方只关心可达性，不消费消息。
- * @param url 待拨号的 websocket 地址
- */
-function openWebSocket(url: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url);
-    const timer = window.setTimeout(() => {
-      socket.close();
-      reject(new Error("timeout"));
-    }, CONNECTION_TEST_TIMEOUT_MS);
-    socket.onopen = () => {
-      window.clearTimeout(timer);
-      socket.close();
-      resolve();
-    };
-    socket.onerror = () => {
-      window.clearTimeout(timer);
-      reject(new Error("unreachable"));
-    };
-  });
-}
-
-/**
- * 错误详情提取：Error 取 message，其余类型转字符串，保证 Notice 文案可读。
- * @param error 捕获到的未知错误
- * @returns 可展示的错误详情文本
- */
-function toErrorDetail(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * 从 data.json 读取设置并与默认值浅合并。
  * 用展开运算而非 Object.assign，避免共享默认对象被意外修改。
@@ -86,16 +49,20 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
 export class SettingsTab extends PluginSettingTab {
   plugin: LocalSpeechRecognitionPlugin;
   /** 麦克风设备缓存：deviceId 随插拔变化，不进 data.json，只在内存中供下拉框使用 */
-  private microphones: AudioDeviceInfo[] = [];
+  private microphones = new MicrophoneStore();
 
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
     // 服务状态变化时刷新设置页：started/stopped/error 都会改变按钮显隐
-    getSherpaServer().subscribeStatus(() => {
+    const unsubscribe = getSherpaServer().subscribeStatus(() => {
       void this.update();
     });
-    void this.refreshMicrophonesSilent();
+    // Tab 与插件同寿命：用 plugin.register 托管退订，避免热重载残留闭包
+    plugin.register(unsubscribe);
+    void this.microphones.refreshSilent().then(() => {
+      void this.update();
+    });
   }
 
   getSettingDefinitions(): SettingDefinitionItem<keyof LocalSpeechRecognitionPluginSettings>[] {
@@ -222,7 +189,7 @@ export class SettingsTab extends PluginSettingTab {
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.testConnection")).onClick(() => {
-              void this.testConnection();
+              void testConnection(this.plugin);
             }),
           );
         },
@@ -243,7 +210,7 @@ export class SettingsTab extends PluginSettingTab {
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.serviceStart")).onClick(() => {
-              void this.startService();
+              void startService(this.plugin);
             }),
           );
         },
@@ -255,7 +222,7 @@ export class SettingsTab extends PluginSettingTab {
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.serviceStop")).onClick(() => {
-              void this.stopService();
+              stopService(this.plugin);
             }),
           );
         },
@@ -267,7 +234,7 @@ export class SettingsTab extends PluginSettingTab {
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.serviceRestart")).onClick(() => {
-              void this.restartService();
+              void restartService(this.plugin);
             }),
           );
         },
@@ -288,7 +255,7 @@ export class SettingsTab extends PluginSettingTab {
           type: "dropdown",
           key: "microphoneDeviceId",
           defaultValue: "",
-          options: this.buildMicrophoneOptions(),
+          options: this.microphones.options(this.plugin),
         },
       },
       {
@@ -297,7 +264,9 @@ export class SettingsTab extends PluginSettingTab {
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.refreshMicrophones")).onClick(() => {
-              void this.refreshMicrophones();
+              void this.microphones.refresh().then(() => {
+                void this.update();
+              });
             }),
           );
         },
@@ -316,99 +285,5 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
     ];
-  }
-
-  /**
-   * 组装麦克风下拉选项：首项恒为系统默认，其余来自设备缓存。
-   * 已保存但当前未枚举到的 id 会保留原值展示，避免下拉框显示空白。
-   */
-  private buildMicrophoneOptions(): Record<string, string> {
-    const options: Record<string, string> = { "": t("settings.defaultMicrophone") };
-    const saved = this.plugin.settings.microphoneDeviceId;
-    if (saved !== "" && !this.microphones.some((device) => device.deviceId === saved)) {
-      options[saved] = saved;
-    }
-    const seen = new Set<string>(["", saved]);
-    for (const device of this.microphones) {
-      if (device.deviceId === "" || seen.has(device.deviceId)) continue;
-      seen.add(device.deviceId);
-      options[device.deviceId] = device.label;
-    }
-    return options;
-  }
-
-  /** 手动刷新麦克风：重新枚举设备并重渲染下拉框，失败经 Notice 提示 */
-  private async refreshMicrophones(): Promise<void> {
-    try {
-      this.microphones = await enumerateAudioInputDevices();
-      void this.update();
-    } catch (error) {
-      new Notice(t("settings.refreshMicrophonesFailed", { detail: toErrorDetail(error) }), 3000);
-    }
-  }
-
-  /**
-   * 静默刷新麦克风：构造器中预拉一次设备列表，无提示。
-   * 未授权等失败直接忽略，等用户手动点刷新按钮。
-   */
-  private async refreshMicrophonesSilent(): Promise<void> {
-    try {
-      this.microphones = await enumerateAudioInputDevices();
-      void this.update();
-    } catch {
-      return;
-    }
-  }
-
-  /**
-   * 连接测试：按当前 host/port 拨号 sherpa-onnx websocket 服务，
-   * 连接建立即判活并关闭，不发送音频数据；结果经 Notice 提示。
-   */
-  private async testConnection(): Promise<void> {
-    const { host, port } = this.plugin.settings;
-    new Notice(t("settings.testingConnection"), 1000);
-    try {
-      await openWebSocket(resolveSherpaUrl(host, port));
-      new Notice(t("settings.connectionSucceeded"), 3000);
-    } catch (error) {
-      new Notice(t("settings.connectionFailed", { detail: toErrorDetail(error) }), 3000);
-    }
-  }
-
-  /**
-   * 手动启动服务：按当前设置拉起进程，成功失败均经 Notice 提示，
-   * 状态广播会触发设置页刷新，无需此处手动 update。
-   */
-  private async startService(): Promise<void> {
-    new Notice(t("settings.serverStarting"), 1000);
-    const result = await getSherpaServer().start(toServerConfig(this.plugin));
-    if (result.ok) {
-      new Notice(t("settings.serverStarted"), 3000);
-    } else if (result.detail === "already-running") {
-      new Notice(t("settings.serverAlreadyRunning"), 3000);
-    } else {
-      new Notice(t("settings.serverStartFailed", { detail: resolveDetail(result.detail) }), 5000);
-    }
-  }
-
-  /**
-   * 手动关闭服务：同步 kill 进程，状态广播触发按钮显隐刷新。
-   */
-  private stopService(): void {
-    getSherpaServer().stop();
-    new Notice(t("settings.serverStopped"), 3000);
-  }
-
-  /**
-   * 手动重启服务：先同步关闭再按当前设置拉起，结果经 Notice 提示。
-   */
-  private async restartService(): Promise<void> {
-    new Notice(t("settings.serverStarting"), 1000);
-    const result = await getSherpaServer().restart(toServerConfig(this.plugin));
-    if (result.ok) {
-      new Notice(t("settings.serverStarted"), 3000);
-    } else {
-      new Notice(t("settings.serverStartFailed", { detail: resolveDetail(result.detail) }), 5000);
-    }
   }
 }

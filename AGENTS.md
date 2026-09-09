@@ -88,6 +88,7 @@
 - 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给私有方法（如 `testConnection()`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 刷新；配置变更仅手动生效，不自动重启
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
+- 跨层例外：声明式设置 API 迫使按钮/下拉与行定义同处一 Tab，`settings` 允许经 `service-actions.ts`/`microphone-options.ts` 两个特有文件单向调用 `sherpa-server`（启停/状态）与 `audio-capture`（枚举），`cores.ts` 本体不直连进程与硬件；方向仍为 settings → i18n 为主，此为例外且仅限这两个文件
 
 ### sherpa-server（服务管理）
 
