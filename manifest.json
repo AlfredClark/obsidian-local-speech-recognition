@@ -2,7 +2,7 @@
   "id": "local-speech-recognition",
   "name": "Local Speech Recognition",
   "version": "0.1.0",
-  "minAppVersion": "1.13.0",
+  "minAppVersion": "1.13.1",
   "description": "Use the locally deployed sherpa-onnx service to realize offline speech recognition in your notes.",
   "isDesktopOnly": true,
   "author": "Alfred Clark",

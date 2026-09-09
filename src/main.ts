@@ -8,7 +8,7 @@ import type { LocalSpeechRecognitionPluginSettings } from "./cores/settings";
  * 业务逻辑按 cores/features 分层下沉，保证 main 文件持续最小化。
  */
 export default class LocalSpeechRecognitionPlugin extends Plugin {
-  // 基类 Plugin 已声明 settings（1.13.0+），此处仅收窄类型，不重复声明字段
+  // 基类 Plugin 已声明 settings（1.13.1+），此处仅收窄类型，不重复声明字段
   /**
    * 插件设置。在 onload 的 initCores 阶段加载完毕，后续模块可安全读取。
    */

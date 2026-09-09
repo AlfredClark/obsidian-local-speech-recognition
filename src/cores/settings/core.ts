@@ -80,7 +80,7 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
 }
 
 /**
- * 设置页。使用 1.13.0+ 声明式 API（getSettingDefinitions），不用已废弃的 display()：
+ * 设置页。使用 1.13.1+ 声明式 API（getSettingDefinitions），不用已废弃的 display()：
  * 读写 plugin.settings 与持久化由 Obsidian 自动完成，无需手写 onChange。
  */
 export class SettingsTab extends PluginSettingTab {
