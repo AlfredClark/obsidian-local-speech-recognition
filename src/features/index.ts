@@ -15,7 +15,7 @@ export async function initFeatures(plugin: LocalSpeechRecognitionPlugin): Promis
   cleanups.push(await initSpeechRecognition(plugin));
 }
 
-/** 卸载时依序回收各 feature 注册的资源（视图叶子、服务进程等） */
+/** 卸载时依序回收各 feature 注册的资源（视图叶子、服务进程等），并排空队列以支持热重载重复 onload */
 export function cleanFeatures(): void {
-  cleanups.forEach((cleanup) => cleanup());
+  cleanups.splice(0).forEach((cleanup) => cleanup());
 }

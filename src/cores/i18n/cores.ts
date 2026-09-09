@@ -12,7 +12,7 @@ const LOCALES: Record<SupportedLanguage, TranslationResource> = {
 };
 
 // 模块级保存插件引用，t() 每次调用时实时读取 settings.language，
-// 设置页 update() 重渲染后文本即自动切换，无需缓存与事件通知
+// 设置页 update() 重渲染后文本即自动切换
 let pluginRef: LocalSpeechRecognitionPlugin | null = null;
 
 /** 语言变更订阅回调集合；语言切换时通知依赖 t() 的非设置页 UI 重建文案 */
@@ -39,10 +39,11 @@ export function notifyLanguageChange(): void {
 /**
  * 初始化 i18n 模块。必须在 initSettings 之前调用：
  * initSettings 内部的 addSettingTab() 会同步触发设置页渲染（getSettingDefinitions → t()），
- * 若此时 pluginRef 未就绪，首次解析将全部回退 system 并被缓存。
+ * 若此时 pluginRef 未就绪，首次解析将回退 system。
+ * 同步函数：仅保存引用，无异步工作。
  * @param plugin 插件实例
  */
-export async function initI18n(plugin: LocalSpeechRecognitionPlugin) {
+export function initI18n(plugin: LocalSpeechRecognitionPlugin): void {
   pluginRef = plugin;
 }
 
