@@ -52,19 +52,43 @@ const READY_TIMEOUT_MS = 10000;
 /** 关闭信号升级超时毫秒数：SIGTERM 无效后升级为 SIGKILL */
 const KILL_ESCALATION_TIMEOUT_MS = 3000;
 
+/** 就绪探测拨号超时毫秒数：握手卡住时兜底失败，避免 poll 链停摆 */
+const PROBE_TIMEOUT_MS = 3000;
+
 /**
  * 拨号指定 ws 地址：open 即 resolve，不消费消息。
+ * 握手卡住超 PROBE_TIMEOUT_MS 即 reject 并 close，避免 spawnAndWait 永远 hanging。
  * @param url 待拨号的 ws 地址
  */
 function probeWebSocket(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.close();
+      } finally {
+        reject(new Error("probe timeout"));
+      }
+    }, PROBE_TIMEOUT_MS);
     socket.onopen = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
       socket.close();
       resolve();
     };
     socket.onerror = () => {
-      reject(new Error("unreachable"));
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      try {
+        socket.close();
+      } finally {
+        reject(new Error("unreachable"));
+      }
     };
   });
 }
@@ -82,6 +106,8 @@ class SherpaServer implements SherpaServerManager {
   private listeners = new Set<() => void>();
   /** 就绪探测定时器，启动失败或成功后清理 */
   private readyTimer: number | null = null;
+  /** 在途探测取消钩：spawnAndWait 注册，stop/dispose 调用后在途回包失效 */
+  private cancelProbe: (() => void) | null = null;
 
   getStatus(): SherpaServerStatus {
     return this.status;
@@ -117,6 +143,8 @@ class SherpaServer implements SherpaServerManager {
   }
 
   stop(): void {
+    this.cancelProbe?.();
+    this.cancelProbe = null;
     this.clearReadyTimer();
     this.killProcess();
     this.handle = null;
@@ -124,6 +152,8 @@ class SherpaServer implements SherpaServerManager {
   }
 
   dispose(): void {
+    this.cancelProbe?.();
+    this.cancelProbe = null;
     this.clearReadyTimer();
     this.killNow();
     this.handle = null;
@@ -152,37 +182,57 @@ class SherpaServer implements SherpaServerManager {
     this.setStatus("starting");
     return new Promise((resolve) => {
       let settled = false;
+      // stop/dispose 置 true：在途 probe 回包与后续事件一律失效，不翻活
+      let cancelled = false;
+      this.cancelProbe = () => {
+        cancelled = true;
+      };
       const fail = (detail: string) => {
         if (settled) return;
         settled = true;
         this.clearReadyTimer();
+        this.cancelProbe = null;
         this.handle = null;
         this.setStatus("error");
         resolve({ ok: false, detail });
       };
       const succeed = () => {
-        if (settled) return;
+        if (settled || cancelled) return;
         settled = true;
         this.clearReadyTimer();
+        this.cancelProbe = null;
         this.setStatus("running");
         resolve({ ok: true });
       };
       handle.on("error", (error) => {
+        // 就绪后崩溃也感知：此前 fail/succeed 的 settled 守卫会吞掉，需区分阶段
+        if (this.getStatus() === "running" && this.handle !== null) {
+          this.clearReadyTimer();
+          this.handle = null;
+          this.setStatus("error");
+          return;
+        }
         fail(toErrorDetail(error));
       });
       handle.on("exit", (code) => {
+        if (this.getStatus() === "running" && this.handle !== null) {
+          this.clearReadyTimer();
+          this.handle = null;
+          this.setStatus("error");
+          return;
+        }
         fail(`exit code ${String(code)}`);
       });
       const startedAt = Date.now();
       const poll = () => {
-        if (settled) return;
+        if (settled || cancelled) return;
         if (Date.now() - startedAt > READY_TIMEOUT_MS) {
           this.stopSpawned(handle);
           fail("timeout");
           return;
         }
         void probeWebSocket(url).then(succeed, () => {
-          if (!settled) {
+          if (!settled && !cancelled) {
             this.readyTimer = window.setTimeout(poll, READY_POLL_INTERVAL_MS);
           }
         });
