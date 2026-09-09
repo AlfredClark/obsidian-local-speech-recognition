@@ -1,11 +1,11 @@
 import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
-import type { TemplatePluginSettings } from "./types";
+import type { LocalSpeechRecognitionPluginSettings } from "./types";
 import { notifyLanguageChange, t } from "../i18n";
-import type TemplatePlugin from "../../main";
+import type LocalSpeechRecognitionPlugin from "../../main";
 
 /** 设置默认值。data.json 缺失字段时（如旧版本升级）以此为兜底合并 */
-export const DEFAULT_SETTINGS: TemplatePluginSettings = {
+export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   collapsible: false,
   language: "system",
 };
@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: TemplatePluginSettings = {
  * 必须在业务功能初始化之前调用，后者依赖 settings 已就绪。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
  */
-export async function initSettings(plugin: TemplatePlugin): Promise<void> {
+export async function initSettings(plugin: LocalSpeechRecognitionPlugin): Promise<void> {
   plugin.settings = await loadSettings(plugin);
   plugin.addSettingTab(new SettingsTab(plugin));
 }
@@ -26,8 +26,8 @@ export async function initSettings(plugin: TemplatePlugin): Promise<void> {
  * @param plugin 插件实例
  * @returns 合并后的完整设置对象
  */
-export async function loadSettings(plugin: TemplatePlugin): Promise<TemplatePluginSettings> {
-  const data = (await plugin.loadData()) as Partial<TemplatePluginSettings> | null;
+export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promise<LocalSpeechRecognitionPluginSettings> {
+  const data = (await plugin.loadData()) as Partial<LocalSpeechRecognitionPluginSettings> | null;
   return { ...DEFAULT_SETTINGS, ...data };
 }
 
@@ -36,14 +36,14 @@ export async function loadSettings(plugin: TemplatePlugin): Promise<TemplatePlug
  * 读写 plugin.settings 与持久化由 Obsidian 自动完成，无需手写 onChange。
  */
 export class SettingsTab extends PluginSettingTab {
-  plugin: TemplatePlugin;
+  plugin: LocalSpeechRecognitionPlugin;
 
-  constructor(plugin: TemplatePlugin) {
+  constructor(plugin: LocalSpeechRecognitionPlugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
   }
 
-  getSettingDefinitions(): SettingDefinitionItem<keyof TemplatePluginSettings>[] {
+  getSettingDefinitions(): SettingDefinitionItem<keyof LocalSpeechRecognitionPluginSettings>[] {
     return [
       {
         type: "group",
@@ -81,7 +81,7 @@ export class SettingsTab extends PluginSettingTab {
 
   setControlValue(key: string, value: unknown) {
     void super.setControlValue(key, value);
-    // 语言切换广播：设置页 update() 只重渲染自身，依赖 t() 的其他 UI（如侧边栏）靠订阅刷新
+    // 语言切换广播：设置页 update() 只重渲染自身，依赖 t() 的其他 UI 靠订阅刷新
     if (key === "language") {
       notifyLanguageChange();
     }

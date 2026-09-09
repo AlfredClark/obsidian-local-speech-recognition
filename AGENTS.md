@@ -1,10 +1,10 @@
-# Obsidian Plugin Template — 开发规范
+# Local Speech Recognition — 开发规范
 
 ## 项目概览
 
-- Obsidian 社区插件模板：TypeScript → esbuild → `main.js`
+- Obsidian 社区插件：TypeScript → esbuild → `main.js`
 - 发布产物：`main.js` / `manifest.json` / `styles.css`（位于根目录，GitHub Release 使用）
-- 插件 ID：`obsidian-plugin-template`；许可证：GPL-3.0-only
+- 插件 ID：`local-speech-recognition`；许可证：GPL-3.0-only
 
 ## 技术栈
 
@@ -40,8 +40,6 @@
 │   │   ├── i18n/            # 国际化模块：手动实现的多语言支持
 │   │   │   └── locales/     # 语言资源目录（文件说明见核心能力）
 │   │   ├── settings/        # 设置模块：持久化设置 + 声明式设置页
-│   │   └── sidebar/         # 侧边栏：Ribbon 触发的多页面容器视图（说明见核心能力）
-│   │       └── components/  # Svelte 组件（根组件与页面组件，语言切换经 #key 重建）
 │   ├── features/            # 业务功能：用户可感知的具体功能（暂无模块）
 │   ├── utils/               # 无状态纯函数工具（如 svelte 组件挂载，说明见核心能力）
 │   └── main.ts              # 插件入口：仅调用 initCores()/initFeatures() 聚合初始化
@@ -85,14 +83,6 @@
 - 设置页使用 1.13.0+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，语言切换等联动即时生效
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
 
-### sidebar（侧边栏）
-
-- 三段式组织；core.ts 导出 `initSidebar(plugin)`，经 cores 聚合层在 initSettings 之后调用（i18n 已就绪，`t()` 可安全求值）；`registerView`/`addRibbonIcon` 由 Obsidian 卸载自动回收，无需清理函数
-- `SIDEBAR_VIEW_TYPE` 常量与 `SidebarPage`（"page1" | "page2" | "page3"）位于 types.ts；新增页面时扩展联合类型并在组件切换处追加分支
-- `SidebarView extends ItemView`：`getDisplayText` 与 Ribbon 提示用插件名常量（与 manifest name 一致，不国际化）；`onOpen` 经 `mountComponent` 挂载 Svelte 根组件，`onClose` 回收；`activateSidebar(plugin)` 已有视图叶子则 `revealLeaf` 激活，否则 `getRightLeaf(false)` 新建叶子并打开，仅负责激活不做关闭
-- 组件位于 `components/`：`SidebarRoot.svelte` 以 `$state` 维护 `activePage` 并渲染 tab 按钮栏 + `{#if}` 切换三个占位页面组件（PageOne/Two/Three），tab 与占位文案经 `t()` 翻译；语言切换经 `subscribeLanguageChange` 订阅 + `{#key langTick}` 重建内容块（见 i18n 说明，`activePage` 在块外保留，页面切换不丢）
-- 依赖方向：值导入 i18n、utils/svelte，仅 type-only 导入 main，无运行时循环
-
 ## utils（工具）
 
 `src/utils/` 下通用工具功能模块专项说明。
@@ -106,7 +96,7 @@
 
 1. **命名**：类/接口 PascalCase，函数/变量 camelCase，常量 UPPER_SNAKE_CASE，文件 kebab-case
 2. **类型**：strict 全开（含 `noUncheckedIndexedAccess`）；禁止 `any` 与隐式 any
-3. **模块**：`cores/`（核心能力）与 `features/`（业务功能）下的每个模块均按三段式组织：`index.ts`（统一出口，仅 re-export）、`types.ts`（类型定义）、`core.ts`（核心逻辑，导出 `init<模块>()` 初始化方法）；各模块 init 方法由 `src/cores/index.ts`/`src/features/index.ts` 分别聚合为 `initCores()`/`initFeatures()`，main.ts 各调用一次；init 方法参数一律使用具体类 `TemplatePlugin`，且导入一律为 `import type`（类型层循环在编译期擦除，运行时无循环）；模块特有文件（如 i18n 的 `locales/`）直接置于模块目录下，不受三段式约束
+3. **模块**：`cores/`（核心能力）与 `features/`（业务功能）下的每个模块均按三段式组织：`index.ts`（统一出口，仅 re-export）、`types.ts`（类型定义）、`core.ts`（核心逻辑，导出 `init<模块>()` 初始化方法）；各模块 init 方法由 `src/cores/index.ts`/`src/features/index.ts` 分别聚合为 `initCores()`/`initFeatures()`，main.ts 各调用一次；init 方法参数一律使用具体类 `LocalSpeechRecognitionPlugin`，且导入一律为 `import type`（类型层循环在编译期擦除，运行时无循环）；模块特有文件（如 i18n 的 `locales/`）直接置于模块目录下，不受三段式约束
 4. **注释**：中文，写"为什么"而非"是什么"；不做多余注释。导出声明（类/接口/函数/常量/属性）一律使用 JSDoc（`/** */`），内部逻辑用行注释；`@param`/`@returns` 仅在参数或返回值存在需要说明的语义时使用，不机械全量添加；纯 re-export 的 index.ts 无需注释
 5. **约束**：禁止 `import node:*` 与 Electron API（`obsidianmd/no-nodejs-modules` 规则）
 6. **依赖**：确认可 bundle 或需加入 esbuild `external` 列表
@@ -144,6 +134,6 @@
 
 ## 构建与发布
 
-- **开发热重载**：`bun run link <vault>/.obsidian/plugins/obsidian-plugin-template` + `bun run dev`，配合 obsidian-hot-reload 插件自动重载
+- **开发热重载**：`bun run link <vault>/.obsidian/plugins/local-speech-recognition` + `bun run dev`，配合 obsidian-hot-reload 插件自动重载
 - **版本流程**：`bun run version`（读 package.json 版本 → 更新 manifest.json/versions.json）
 - **Release**：打 tag 触发 GitHub Action（bun 环境）自动构建，产物取自根目录

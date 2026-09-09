@@ -1,21 +1,23 @@
 {
-  "name": "obsidian-plugin-template",
+  "name": "obsidian-local-speech-recognition",
   "version": "0.1.0",
-  "description": "Obsidian plugin development template",
+  "description": "Use the locally deployed sherpa-onnx service to realize offline speech recognition in your notes.",
   "license": "GPL-3.0-only",
   "author": "Alfred Clark",
-  "homepage": "https://github.com/AlfredClark/obsidian-plugin-template",
+  "homepage": "https://github.com/AlfredClark/obsidian-local-speech-recognition",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AlfredClark/obsidian-plugin-template.git"
+    "url": "git+https://github.com/AlfredClark/obsidian-local-speech-recognition.git"
   },
   "bugs": {
-    "url": "https://github.com/AlfredClark/obsidian-plugin-template/issues"
+    "url": "https://github.com/AlfredClark/obsidian-local-speech-recognition/issues"
   },
   "keywords": [
     "obsidian",
     "plugin",
-    "template"
+    "speech-recognition",
+    "offline",
+    "sherpa-onnx"
   ],
   "main": "main.js",
   "type": "module",

@@ -1,9 +1,9 @@
 {
-  "id": "obsidian-plugin-template",
-  "name": "Obsidian Plugin Template",
+  "id": "local-speech-recognition",
+  "name": "Local Speech Recognition",
   "version": "0.1.0",
   "minAppVersion": "1.13.0",
-  "description": "Obsidian plugin development template.",
+  "description": "Use the locally deployed sherpa-onnx service to realize offline speech recognition in your notes.",
   "isDesktopOnly": true,
   "author": "Alfred Clark",
   "authorUrl": "https://github.com/AlfredClark"
