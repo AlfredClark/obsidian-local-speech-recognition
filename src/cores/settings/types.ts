@@ -26,4 +26,6 @@ export interface LocalSpeechRecognitionPluginSettings {
   autoStartServer: boolean;
   /** 语音输入触发模式 */
   inputMode: SpeechInputMode;
+  /** 语音输入麦克风设备 id；空字符串表示系统默认设备 */
+  microphoneDeviceId: string;
 }

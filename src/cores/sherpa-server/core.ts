@@ -1,5 +1,5 @@
 import { Platform } from "obsidian";
-import { buildSherpaArgs, validateSherpaConfig } from "../../utils/sherpa-process";
+import { buildSherpaArgs, resolveSherpaUrl, validateSherpaConfig } from "../../utils/sherpa-process";
 import type { SherpaServerConfig, SherpaServerStatus } from "../../utils/sherpa-process";
 import { t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -140,7 +140,7 @@ class SherpaServer implements SherpaServerManager {
    * 就绪前进程退出大概率是参数错误，透出退出码便于排查。
    */
   private async spawnAndWait(spawn: SpawnFn, config: SherpaServerConfig): Promise<SherpaServerResult> {
-    const url = `ws://${config.host}:${config.port}`;
+    const url = resolveSherpaUrl(config.host, config.port);
     let handle: ManagedProcess;
     try {
       handle = spawn(config.binaryPath, buildSherpaArgs(config), { stdio: ["ignore", "pipe", "pipe"] });

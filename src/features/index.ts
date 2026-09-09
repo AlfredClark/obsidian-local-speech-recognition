@@ -1,5 +1,6 @@
 import type LocalSpeechRecognitionPlugin from "../main";
 import { initSherpaServer } from "./sherpa-server";
+import { initSpeechRecognition } from "./speech-recognition";
 
 /** 各 feature 注册的清理函数，cleanFeatures 在卸载时依序回收 */
 const cleanups: Array<() => void> = [];
@@ -11,6 +12,7 @@ const cleanups: Array<() => void> = [];
  */
 export async function initFeatures(plugin: LocalSpeechRecognitionPlugin): Promise<void> {
   cleanups.push(await initSherpaServer(plugin));
+  cleanups.push(await initSpeechRecognition(plugin));
 }
 
 /** 卸载时依序回收各 feature 注册的资源（视图叶子、服务进程等） */

@@ -2,6 +2,9 @@ import { Notice, PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
 import { getSherpaServer, resolveDetail, toServerConfig } from "../sherpa-server";
+import { enumerateAudioInputDevices } from "../audio-capture";
+import type { AudioDeviceInfo } from "../audio-capture";
+import { resolveSherpaUrl } from "../../utils/sherpa-process";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 
@@ -16,6 +19,7 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   numThreads: 4,
   autoStartServer: false,
   inputMode: "toggle",
+  microphoneDeviceId: "",
 };
 
 /**
@@ -81,6 +85,8 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
  */
 export class SettingsTab extends PluginSettingTab {
   plugin: LocalSpeechRecognitionPlugin;
+  /** 麦克风设备缓存：deviceId 随插拔变化，不进 data.json，只在内存中供下拉框使用 */
+  private microphones: AudioDeviceInfo[] = [];
 
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     super(plugin.app, plugin);
@@ -89,6 +95,7 @@ export class SettingsTab extends PluginSettingTab {
     getSherpaServer().subscribeStatus(() => {
       void this.update();
     });
+    void this.refreshMicrophonesSilent();
   }
 
   getSettingDefinitions(): SettingDefinitionItem<keyof LocalSpeechRecognitionPluginSettings>[] {
@@ -125,6 +132,7 @@ export class SettingsTab extends PluginSettingTab {
         ],
       },
       this.buildCollapsibleSection(t("settings.sherpa"), t("settings.sherpaDesc"), this.getSherpaItems()),
+      this.buildCollapsibleSection(t("settings.recognition"), t("settings.recognitionDesc"), this.getRecognitionItems()),
     ];
   }
 
@@ -264,6 +272,36 @@ export class SettingsTab extends PluginSettingTab {
           );
         },
       },
+    ];
+  }
+
+  /**
+   * 语音输入条目：麦克风设备下拉、刷新按钮与触发模式。
+   * 设备缓存只在内存中，下拉选项每次渲染时由缓存重建。
+   */
+  private getRecognitionItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
+    return [
+      {
+        name: t("settings.microphone"),
+        desc: t("settings.microphoneDesc"),
+        control: {
+          type: "dropdown",
+          key: "microphoneDeviceId",
+          defaultValue: "",
+          options: this.buildMicrophoneOptions(),
+        },
+      },
+      {
+        name: t("settings.refreshMicrophones"),
+        desc: t("settings.refreshMicrophonesDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.refreshMicrophones")).onClick(() => {
+              void this.refreshMicrophones();
+            }),
+          );
+        },
+      },
       {
         name: t("settings.inputMode"),
         desc: t("settings.inputModeDesc"),
@@ -281,6 +319,48 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
+   * 组装麦克风下拉选项：首项恒为系统默认，其余来自设备缓存。
+   * 已保存但当前未枚举到的 id 会保留原值展示，避免下拉框显示空白。
+   */
+  private buildMicrophoneOptions(): Record<string, string> {
+    const options: Record<string, string> = { "": t("settings.defaultMicrophone") };
+    const saved = this.plugin.settings.microphoneDeviceId;
+    if (saved !== "" && !this.microphones.some((device) => device.deviceId === saved)) {
+      options[saved] = saved;
+    }
+    const seen = new Set<string>(["", saved]);
+    for (const device of this.microphones) {
+      if (device.deviceId === "" || seen.has(device.deviceId)) continue;
+      seen.add(device.deviceId);
+      options[device.deviceId] = device.label;
+    }
+    return options;
+  }
+
+  /** 手动刷新麦克风：重新枚举设备并重渲染下拉框，失败经 Notice 提示 */
+  private async refreshMicrophones(): Promise<void> {
+    try {
+      this.microphones = await enumerateAudioInputDevices();
+      void this.update();
+    } catch (error) {
+      new Notice(t("settings.refreshMicrophonesFailed", { detail: toErrorDetail(error) }), 3000);
+    }
+  }
+
+  /**
+   * 静默刷新麦克风：构造器中预拉一次设备列表，无提示。
+   * 未授权等失败直接忽略，等用户手动点刷新按钮。
+   */
+  private async refreshMicrophonesSilent(): Promise<void> {
+    try {
+      this.microphones = await enumerateAudioInputDevices();
+      void this.update();
+    } catch {
+      return;
+    }
+  }
+
+  /**
    * 连接测试：按当前 host/port 拨号 sherpa-onnx websocket 服务，
    * 连接建立即判活并关闭，不发送音频数据；结果经 Notice 提示。
    */
@@ -288,7 +368,7 @@ export class SettingsTab extends PluginSettingTab {
     const { host, port } = this.plugin.settings;
     new Notice(t("settings.testingConnection"), 1000);
     try {
-      await openWebSocket(`ws://${host}:${port}`);
+      await openWebSocket(resolveSherpaUrl(host, port));
       new Notice(t("settings.connectionSucceeded"), 3000);
     } catch (error) {
       new Notice(t("settings.connectionFailed", { detail: toErrorDetail(error) }), 3000);
