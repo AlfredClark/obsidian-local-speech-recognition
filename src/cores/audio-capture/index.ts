@@ -1,3 +1,3 @@
 export * from "./types";
-export * from "./core";
+export * from "./cores";
 export * from "./worklet";
