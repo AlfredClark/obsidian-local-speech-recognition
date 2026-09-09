@@ -1,4 +1,5 @@
 import { MarkdownView, Notice, Platform } from "obsidian";
+import type { StateEffect } from "@codemirror/state";
 import { startCapture } from "../../cores/audio-capture";
 import type { AudioCaptureSession } from "../../cores/audio-capture";
 import { transcribePcm16k } from "../../cores/sherpa-client";
@@ -7,6 +8,7 @@ import { t } from "../../cores/i18n";
 import { int16ToFloat32Normalized, mergeInt16Chunks } from "../../utils/audio";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
+import { getCodeMirrorEditorView } from "../../utils/cm-utils";
 
 /** 超长录音强制截断秒数：服务端 max-utterance-length 默认 300 秒，客户端提前截断避免被拒连 */
 const MAX_RECORDING_SECONDS = 280;
@@ -50,6 +52,10 @@ class SpeechController {
   private session: AudioCaptureSession | null = null;
   private chunks: Array<Int16Array> = [];
   private capturedSamples = 0;
+  // 启动中标志：startCapture 未 resolve 前再次触发直接 busy，避免双流泄漏
+  private starting = false;
+  // 代际号：dispose 自增，过期异步（startCapture/transcribe 回包）凭此失效
+  private generation = 0;
 
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     this.plugin = plugin;
@@ -57,7 +63,7 @@ class SpeechController {
 
   /** 快捷键触发入口：按当前状态与 inputMode 分流开始/停止 */
   handleTrigger(): void {
-    if (this.state === "transcribing") {
+    if (this.state === "transcribing" || this.starting) {
       new Notice(t("recognition.busy"), 3000);
       return;
     }
@@ -82,6 +88,8 @@ class SpeechController {
 
   /** 卸载时同步释放：停止采集并丢弃分片，不等待识别返回 */
   dispose(): void {
+    this.generation++;
+    this.starting = false;
     this.session?.stop();
     this.session = null;
     this.chunks = [];
@@ -99,10 +107,14 @@ class SpeechController {
       new Notice(t("recognition.serverNotRunning"), 3000);
       return;
     }
+    if (this.starting || this.state !== "idle") return;
+    this.starting = true;
+    const generation = this.generation;
     try {
       this.chunks = [];
       this.capturedSamples = 0;
-      this.session = await startCapture(this.plugin.settings.microphoneDeviceId, (pcm16) => {
+      const session = await startCapture(this.plugin.settings.microphoneDeviceId, (pcm16) => {
+        if (generation !== this.generation) return;
         this.chunks.push(pcm16);
         this.capturedSamples += pcm16.length;
         // 超长截断：达到上限自动停并走正常识别流程，不丢已录音频
@@ -110,11 +122,20 @@ class SpeechController {
           void this.stopAndTranscribe();
         }
       });
+      // 卸载/二次 dispose 后回包直接释放，不复活
+      if (generation !== this.generation) {
+        session.stop();
+        return;
+      }
+      this.session = session;
       this.state = "recording";
       new Notice(t("recognition.recordingStarted"), 3000);
     } catch (error) {
+      if (generation !== this.generation) return;
       this.session = null;
       new Notice(this.resolveMicError(error), 5000);
+    } finally {
+      if (generation === this.generation) this.starting = false;
     }
   }
 
@@ -124,6 +145,7 @@ class SpeechController {
     this.session = null;
     if (this.state !== "recording") return;
     this.state = "transcribing";
+    const generation = this.generation;
     new Notice(t("recognition.recordingStopped"), 2000);
     try {
       const merged = mergeInt16Chunks(this.chunks);
@@ -135,23 +157,52 @@ class SpeechController {
       }
       const { host, port } = this.plugin.settings;
       const result = await transcribePcm16k(int16ToFloat32Normalized(merged), { host, port });
+      // 卸载后回包不再投递：不插光标、不写剪贴板
+      if (generation !== this.generation) return;
       await this.deliverResult(result.text);
     } catch (error) {
+      if (generation !== this.generation) return;
       new Notice(t("recognition.recognizeFailed", { detail: this.toErrorDetail(error) }), 5000);
     } finally {
-      if (this.state === "transcribing") this.state = "idle";
+      if (this.state === "transcribing" && generation === this.generation) this.state = "idle";
     }
   }
 
   /**
-   * 投递识别结果：编辑器聚焦时经 replaceSelection 插入光标处，
-   * 否则写入剪贴板并 Notice 提示；剪贴板异常透出原文。
+   * 投递识别结果：编辑器聚焦时经 CM6 单事务插入光标处（插入+选区一次提交，单次 undo 整体撤销），
+   * 有聚焦但拿不到 CM6 视图时回退 replaceSelection；无聚焦时写入剪贴板并 Notice 提示。
    * @param text 识别文本
    */
   private async deliverResult(text: string): Promise<void> {
+    if (text === "") {
+      // 静音句等空结果：不产生空事务，直接视同未采集到音频
+      new Notice(t("recognition.noAudio"), 3000);
+      return;
+    }
     const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
     const editor = view?.editor;
     if (view !== null && view.getMode() === "source" && editor?.hasFocus() === true) {
+      const cmView = getCodeMirrorEditorView(editor);
+      if (cmView !== null) {
+        // 后处理注入点：setDiagnostics() 等 StateEffect 在此拼入，勿删 key，保持单事务原子性
+        const diagnosticsEffects: Array<StateEffect<unknown>> = [];
+        try {
+          const { from, to } = cmView.state.selection.main;
+          cmView.dispatch({
+            changes: { from, to, insert: text },
+            selection: { anchor: from, head: from + text.length },
+            effects: diagnosticsEffects,
+            scrollIntoView: true,
+          });
+          new Notice(t("recognition.transcribed"), 3000);
+          return;
+        } catch {
+          // dispatch 失败回退 Obsidian 编辑器 API，保证本次结果仍可落盘
+          editor.replaceSelection(text);
+          new Notice(t("recognition.transcribed"), 3000);
+          return;
+        }
+      }
       editor.replaceSelection(text);
       new Notice(t("recognition.transcribed"), 3000);
       return;
