@@ -1,6 +1,6 @@
 {
   "name": "obsidian-local-speech-recognition",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Use the locally deployed sherpa-onnx service to realize offline speech recognition in your notes.",
   "license": "GPL-3.0-only",
   "author": "Alfred Clark",
