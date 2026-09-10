@@ -13,6 +13,53 @@ let databasePromise: Promise<IDBDatabase> | null = null;
 /** 词库数据变更订阅回调集合；写操作提交后广播，供 UI（如侧边栏词库页）实时刷新 */
 const changeListeners = new Set<() => void>();
 
+/** 启用词条的归一化拼音 → 词语列表；模块级单例，原地更新保证调用方持有的引用持续有效 */
+const enabledPinyinMap = new Map<string, string[]>();
+
+/** 映射重建代际号：并发重建时仅最后一次回包生效，防止旧读覆盖新数据 */
+let pinyinRefreshGeneration = 0;
+
+/**
+ * 获取启用词条映射：key 为去空白并小写的拼音，value 为词语列表（权重降序、其次 id 降序）。
+ * 返回只读视图且为同一实例，词库变更后自动可见新数据。
+ */
+export function getEnabledPinyinMap(): ReadonlyMap<string, readonly string[]> {
+  return enabledPinyinMap;
+}
+
+/**
+ * 重建启用词条映射：仅收录启用条目，拼音去除全部空白并转小写后作键；
+ * 同一拼音下词语按权重降序排列，同权重时 id 大者在前（稳定排序保留 listLexiconEntries 的 id 降序）。
+ * 读取失败静默保留旧映射，消费方降级为无增强，不打断主流程。
+ */
+export async function refreshEnabledPinyinMap(): Promise<void> {
+  const generation = ++pinyinRefreshGeneration;
+  try {
+    const entries = await listLexiconEntries();
+    if (generation !== pinyinRefreshGeneration) return;
+    const sorted = entries.filter((entry) => entry.enable).sort((a, b) => b.weight - a.weight);
+    const next = new Map<string, string[]>();
+    for (const entry of sorted) {
+      const key = entry.pinyin.replace(/\s+/g, "").toLowerCase();
+      if (key === "") continue;
+      const words = next.get(key);
+      if (words === undefined) {
+        next.set(key, [entry.word]);
+      } else if (!words.includes(entry.word)) {
+        words.push(entry.word);
+      }
+    }
+    // 原地替换：保持单例引用不变，已持有引用的调用方持续有效
+    enabledPinyinMap.clear();
+    for (const [key, words] of next) {
+      enabledPinyinMap.set(key, words);
+    }
+    console.log(enabledPinyinMap)
+  } catch {
+    // 静默：保留上一次映射
+  }
+}
+
 /**
  * 订阅词库数据变更。新增/更新/删除事务提交成功后触发，
  * 调用方据此重新读取列表，保证多处入口（右键菜单、词库页自身）写入后 UI 一致。
@@ -26,8 +73,9 @@ export function subscribeLexiconChange(listener: () => void): () => void {
   };
 }
 
-/** 广播词库数据变更；由各写操作在事务提交成功后调用 */
+/** 广播词库数据变更；由各写操作在事务提交成功后调用，并同步重建启用词条映射 */
 function notifyLexiconChange(): void {
+  void refreshEnabledPinyinMap();
   changeListeners.forEach((listener) => listener());
 }
 

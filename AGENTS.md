@@ -148,6 +148,7 @@
 
 - 词库经 `window.indexedDB` 持久化（`window.indexedDB` 为纯浏览器 API，无 Node 依赖）：数据库名 `local-speech-recognition`、对象仓库 `lexicon`（`keyPath: "id"` + `autoIncrement`），条目字段 `id/word/pinyin/weight/enable`；字段增删不改变仓库结构，仅仓库形态变化才提升 `LEXICON_DB_VERSION`
 - 单例型模块（无 init），导出无状态 Promise API：`listLexiconEntries`（`getAll` 归一化后按 id 降序）、`findLexiconEntry`（按 word+pinyin 严格一致查找，`excludeId` 供编辑时排除自身，未命中返回 null；多音字可并存）、`addLexiconEntry`（`add` 取自增 id 并回填）、`addLexiconEntries`（批量新增，单事务，返回新增条数）、`updateLexiconEntry`（`put` 全量覆盖）、`deleteLexiconEntry`（单条）、`deleteLexiconEntries`（批量删除，单事务提交避免多次往返）、`updateLexiconEntries`（批量更新，单事务提交；词库页批量启用/禁用经此落库）、`clearLexiconEntries`（单事务 count+clear，返回删除条数）；另有 `subscribeLexiconChange(listener)` 变更订阅（返回退订函数）：各写操作在事务提交成功后广播，供 UI（如侧边栏词库页）重新读取列表，保证右键菜单与词库页等多入口写入后视图一致；由 sidebar 词库页、lexicon feature 与 settings 的 `lexicon-actions.ts` 按需调用
+- 启用词条映射：`getEnabledPinyinMap()` 返回 `ReadonlyMap<string, readonly string[]>`（key 为拼音去空白并小写，value 为词语列表按权重降序、同权重按 id 降序，数组内词语去重）；`refreshEnabledPinyinMap()` 重建映射，仅收录启用条目、key 为空则跳过，读取失败静默保留旧值（消费方降级不打断主流程），带代际号防并发旧读覆盖；映射为模块级单例且原地 clear+set，调用方持有的引用持续有效，由 `initLexicon` 启动预热、`notifyLexiconChange` 在每次写入广播时自动重建
 - `file-format.ts`：导入导出文本格式（模块特有文件）。`serializeLexiconFile(entries)` 输出 `{ version, exportedAt, entries: [{ word, pinyin, weight, enable }] }`（不含 id，导入时重新分配自增 id）；`parseLexiconJson(text)` 兼容包装对象与裸条目数组，逐条归一化——word 缺失/非字符串丢弃计 invalid，`pinyin` 缺失用 `toPinyin` 生成，`weight` 非数字回退 0，`enable` 非布尔回退 true，结构不符抛错；`parseLexiconTxt(text)` 每行一个词语（空行跳过），行尾 `:\d+` 为整数权重（未带后缀回退 0），拼音一律自动生成
 - 连接懒打开并缓存为模块级 Promise；open 失败/被阻塞时复位缓存供下次重试；`onversionchange` 主动关闭连接并作废缓存，避免旧连接阻塞未来版本升级
 - 事务封装 `runTransaction`：先挂 complete/error 监听再发起请求（事务提交可能早于 await 恢复，晚挂监听会永久挂起），再经 `Promise.all` 同时等待请求结果与事务提交；读取结果经 `normalizeLexiconEntry` 运行时归一化——id/word/pinyin 类型不符的脏数据丢弃，`weight` 缺失回退 0、`enable` 缺失回退 true（兼容旧记录）
@@ -172,7 +173,7 @@
 
 ### lexicon（词库）
 
-- `initLexicon`：注册 `workspace.on("editor-menu")`，选中文本非空（trim 后）时在右键菜单追加"添加到词库"项（图标 `book-plus`）；经 `EventRef` 退订（`Workspace.off` 的宽泛签名与窄回调不兼容），返回同步清理函数由 `cleanFeatures` 回收
+- `initLexicon`：启动时先 `await refreshEnabledPinyinMap()` 预热启用词条映射（后续消费方如识别后处理依赖其已就绪），再注册 `workspace.on("editor-menu")`，选中文本非空（trim 后）时在右键菜单追加"添加到词库"项（图标 `book-plus`）；经 `EventRef` 退订（`Workspace.off` 的宽泛签名与窄回调不兼容），返回同步清理函数由 `cleanFeatures` 回收
 - 添加语义：拼音经 `toPinyin` 自动生成、权重 0、默认启用；写入前经 `findLexiconEntry` 按 word+pinyin 严格一致查重，已存在则 `Notice` 提示且不写入；成功与失败分别经 `lexicon.added`/`lexicon.addFailed` 提示；写入经词库 core 广播变更，已打开的侧边栏词库页静默刷新实时反映
 
 ## utils（工具）

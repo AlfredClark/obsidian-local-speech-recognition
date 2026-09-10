@@ -1,17 +1,20 @@
 import { Notice } from "obsidian";
 import type { Editor, Menu } from "obsidian";
-import { addLexiconEntry, findLexiconEntry } from "../../cores/lexicon";
+import { addLexiconEntry, findLexiconEntry, refreshEnabledPinyinMap } from "../../cores/lexicon";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
 
 /**
- * 初始化词库功能：在编辑器右键菜单注册"添加到词库"项，仅在存在选中文本时出现。
+ * 初始化词库功能：预热启用词条拼音映射，并在编辑器右键菜单注册"添加到词库"项，
+ * 仅在存在选中文本时出现。
  * 返回同步清理函数：显式退订 editor-menu，由 cleanFeatures 卸载时回收。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
  * @returns 卸载时退订菜单监听的清理函数
  */
 export async function initLexicon(plugin: LocalSpeechRecognitionPlugin): Promise<() => void> {
+  // 预热映射：后续消费方（如识别后处理）依赖其已就绪；写入变更由词库 core 自动重建
+  await refreshEnabledPinyinMap();
   const handler = (menu: Menu, editor: Editor): void => {
     const word = editor.getSelection().trim();
     if (word === "") return;
