@@ -17,7 +17,7 @@ export interface MountedComponent<T = unknown> {
  * props 透传 mount：分支重载保证无 props 组件可省略、有 props 组件必传，缺列/错型由 svelte-check 兜底。
  * @param target 挂载目标元素
  * @param component Svelte 组件类
- * @param props 传给组件的属性；精确类型由 svelte-check 校验
+ * @param args args
  * @returns 挂载句柄，destroy() 卸载组件并清空容器
  */
 export function mountComponent<Props extends Record<string, unknown>>(

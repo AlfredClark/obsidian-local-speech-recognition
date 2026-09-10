@@ -42,7 +42,7 @@
     </nav>
     <div class="novel-sidebar-content">
       {#if activePage === "lexicon"}
-        <LexiconPage />
+        <LexiconPage {plugin} />
       {:else}
         <ServicePage {plugin} />
       {/if}
@@ -86,6 +86,7 @@
 
   .novel-sidebar-content {
     flex: 1;
+    width: 100%;
     padding: 12px;
     overflow-y: auto;
   }

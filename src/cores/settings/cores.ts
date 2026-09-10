@@ -5,6 +5,7 @@ import { getSherpaServer } from "../sherpa-server";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import { MicrophoneStore } from "./microphone-options";
+import { clearLexicon, exportLexicon, importLexicon } from "./lexicon-actions";
 import { restartService, startService, stopService, testConnection } from "./service-actions";
 
 /** 设置默认值。data.json 缺失字段时（如旧版本升级）以此为兜底合并 */
@@ -101,6 +102,7 @@ export class SettingsTab extends PluginSettingTab {
       },
       this.buildCollapsibleSection(t("settings.sherpa"), t("settings.sherpaDesc"), this.getSherpaItems()),
       this.buildCollapsibleSection(t("settings.recognition"), t("settings.recognitionDesc"), this.getRecognitionItems()),
+      this.buildCollapsibleSection(t("settings.lexicon"), t("settings.lexiconDesc"), this.getLexiconItems()),
     ];
   }
 
@@ -283,6 +285,51 @@ export class SettingsTab extends PluginSettingTab {
             toggle: t("settings.inputModeOptions.toggle"),
             "push-to-talk": t("settings.inputModeOptions.push-to-talk"),
           },
+        },
+      },
+    ];
+  }
+
+  /**
+   * 词库管理条目：导出/导入（JSON 或每行一词的纯文本）/清空。
+   * 均为非持久化动作行，点击委托 lexicon-actions.ts，反馈经 Notice 提示。
+   */
+  private getLexiconItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
+    return [
+      {
+        name: t("settings.lexiconExport"),
+        desc: t("settings.lexiconExportDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.lexiconExport")).onClick(() => {
+              void exportLexicon(this.plugin);
+            }),
+          );
+        },
+      },
+      {
+        name: t("settings.lexiconImport"),
+        desc: t("settings.lexiconImportDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.lexiconImport")).onClick(() => {
+              void importLexicon(this.plugin);
+            }),
+          );
+        },
+      },
+      {
+        name: t("settings.lexiconClear"),
+        desc: t("settings.lexiconClearDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button
+              .setButtonText(t("settings.lexiconClear"))
+              .setDestructive()
+              .onClick(() => {
+                void clearLexicon(this.plugin);
+              }),
+          );
         },
       },
     ];

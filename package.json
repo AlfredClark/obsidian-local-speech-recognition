@@ -47,6 +47,7 @@
     "globals": "^17.12.0",
     "jiti": "^2.7.0",
     "obsidian": "latest",
+    "pinyin-pro": "^3.29.3",
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "stylelint": "^17.15.0",
