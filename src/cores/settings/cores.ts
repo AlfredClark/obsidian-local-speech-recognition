@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   host: "127.0.0.1",
   port: 6006,
   numThreads: 4,
+  provider: "cpu",
   autoStartServer: false,
   inputMode: "toggle",
   microphoneDeviceId: "",
@@ -253,6 +254,20 @@ export class SettingsTab extends PluginSettingTab {
           key: "numThreads",
           defaultValue: 4,
           min: 1,
+        },
+      },
+      {
+        name: t("settings.provider"),
+        desc: t("settings.providerDesc"),
+        control: {
+          type: "dropdown",
+          key: "provider",
+          defaultValue: "cpu",
+          options: {
+            cpu: "CPU",
+            cuda: "CUDA",
+            coreml: "CoreML",
+          },
         },
       },
       {

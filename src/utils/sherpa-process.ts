@@ -135,6 +135,7 @@ export function buildSherpaArgs(config: SherpaServerConfig): string[] {
   const logPath = Platform.isWin ? `--log-file=NUL` : Platform.isLinux || Platform.isMacOS ? `--log-file=/dev/null` : ``;
   return [
     `--port=${config.port}`,
+    `--provider=${config.provider}`,
     `--num-threads=${config.numThreads}`,
     ...SHERPA_MODELS[config.modelType].buildArgs({ modelDir }),
     logPath,

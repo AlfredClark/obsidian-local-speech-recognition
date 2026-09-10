@@ -4,6 +4,8 @@ import type { SherpaModelId } from "../../utils/sherpa-process";
 /** 语音输入触发模式：toggle 单次点击切换，push-to-talk 按住说话 */
 export type SpeechInputMode = "toggle" | "push-to-talk";
 
+export type ProviderType = "cpu" | "cuda" | "coreml";
+
 /**
  * 插件设置结构。声明式设置 API 按 key 直接读写此结构，
  * 新增字段须同步在 DEFAULT_SETTINGS 补默认值。
@@ -25,6 +27,8 @@ export interface LocalSpeechRecognitionPluginSettings {
   port: number;
   /** 服务 CPU 线程数 */
   numThreads: number;
+  /** 推理后端 */
+  provider: ProviderType;
   /** 是否随插件加载自动拉起服务 */
   autoStartServer: boolean;
   /** 语音输入触发模式 */

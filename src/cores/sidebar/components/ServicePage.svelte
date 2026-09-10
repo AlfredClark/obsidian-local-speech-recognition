@@ -72,6 +72,8 @@
     <p>{plugin.settings.port}</p>
     <h4>{t("sidebar.serviceThreads")}</h4>
     <p>{plugin.settings.numThreads}</p>
+    <h4>{t("sidebar.serviceProvider")}</h4>
+    <p>{plugin.settings.provider == "coreml" ? "CoreML" : plugin.settings.provider.toUpperCase()}</p>
     <h4>{t("sidebar.serviceAutoStart")}</h4>
     <p>{displayAutoStart(plugin.settings.autoStartServer)}</p>
     <h4>{t("sidebar.serviceAddress")}</h4>

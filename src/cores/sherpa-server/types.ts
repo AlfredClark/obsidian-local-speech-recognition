@@ -14,6 +14,8 @@ export interface SherpaServerConfig {
   port: number;
   /** 服务 CPU 线程数 */
   numThreads: number;
+  /** 推理后端 */
+  provider: string;
 }
 
 /** sherpa-onnx 服务存活状态 */
