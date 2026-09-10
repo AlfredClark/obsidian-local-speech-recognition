@@ -13,7 +13,7 @@
 - **TypeScript 6**：原生编译器，仅用于类型检查（`tsc -noEmit -skipLibCheck`）
 - **esbuild 0.28**：CJS 打包；`obsidian`/`electron`/`@codemirror/*`/`@lezer/*`/node 内置模块（`builtinModules` 与 `node:` 前缀形式均列入）外部化；esbuild-svelte 插件（`css: "injected"`、dev 关闭压缩）；dev 模式用 `context.rebuild()` + `fs.watch`（100ms 防抖）自行调度，构建完成后同步 dist
 - **Svelte 5**：UI 组件框架；`$props`/`$state`/`$derived`/`$effect` runes；svelte-check（`--fail-on-warnings`，经 `scripts/svelte-check.ts` 仅在存在 `.svelte` 时执行）类型检查；eslint-plugin-svelte/prettier-plugin-svelte 配套
-- **CodeMirror 6**（`codemirror`/`@codemirror/state`/`@codemirror/view`/`@codemirror/lint`）：仅用于识别结果经 CM6 单事务插入；外部化，禁用值导入（见代码规范）
+- **CodeMirror 6**（`codemirror`/`@codemirror/state`/`@codemirror/view`/`@codemirror/lint`）：用于识别结果经 CM6 单事务插入与词库后处理高亮/替换；外部化，值导入仅限编辑器扩展实现（`@codemirror/state`/`@codemirror/view`），其余场景一律 `import type`（见代码规范）
 - **pinyin-pro 3**：中文转拼音（词库录入自动填充）；纯 JS 依赖打进 main.js，不加入 esbuild `external`（`pinyin` API 压缩后约 300 KB）
 - **ESLint 10 + eslint-plugin-obsidianmd**：Obsidian 专用规则（`recommendedWithLocalesEn`）；`esbuild.config.ts`/`scripts/*.ts` 等构建期文件由 globalIgnores 排除
 - **Stylelint 17 + stylelint-config-standard**：CSS 专用检查
@@ -52,7 +52,7 @@
 │   │   └── sidebar/         # 侧边栏：自定义视图 + Svelte 页面
 │   │       └── components/  # Svelte 组件（SidebarRoot / LexiconPage / LexiconEntryForm / ServicePage）
 │   ├── features/            # 业务功能：用户可感知的具体功能
-│   │   ├── lexicon/         # 词库：编辑器右键菜单添加选中文本（见业务功能）
+│   │   ├── lexicon/         # 词库：编辑器右键菜单添加选中文本 + 识别后处理高亮/替换（见业务功能）
 │   │   ├── sherpa-server/   # 服务编排：autoStart 拉起 + 退出/卸载回收（状态见业务功能）
 │   │   └── speech-recognition/ # 语音识别：命令注册 + 录音→识别→投递控制器（见业务功能）
 │   ├── utils/               # 无状态纯函数工具（如音频处理、Svelte 挂载，说明见 utils）
@@ -168,13 +168,15 @@
 - `SpeechController` 串行处理一次「录音→识别→投递」闭环：状态机 `idle/recording/transcribing`，`starting` 标志防双流泄漏，`generation` 代际号使卸载/重触发后的过期异步回包失效，`transcribeAbort` 取消在途识别；识别中再次触发经 `Notice` 拒绝，避免并发 WS 互相覆盖
 - 触发语义：toggle 模式按一次开始、再按一次停止；push-to-talk 为过渡实现（Obsidian 快捷键只给 keydown，无 keyup），松开 `R`/`Alt` 或再按一次均停止
 - 录音前校验服务已运行与桌面端；单次录音上限 280s（服务端 300s 拒连），到时自动停止并走正常识别流程，不丢已录音频
-- 投递策略：Markdown 编辑器聚焦且为 source 模式时，经 `getCodeMirrorEditorView` 取 CM6 视图，用单事务 `dispatch`（`changes` + `selection` 置于末尾 + `effects` 预留诊断注入点 + `scrollIntoView`）插入光标处，失败回退 `editor.replaceSelection`；无聚焦时写剪贴板并 `Notice` 提示；空结果视同未采集到音频
+- 投递策略：Markdown 编辑器聚焦且为 source 模式时，经 `getCodeMirrorEditorView` 取 CM6 视图，用单事务 `dispatch`（`changes` + `selection` 置于末尾 + `effects: [setTargetsEffect.of(findTargets(text, from))]` 触发词库后处理高亮 + `scrollIntoView`）插入光标处，失败回退 `editor.replaceSelection`；无聚焦时写剪贴板并 `Notice` 提示；空结果视同未采集到音频
 - 麦克风错误按 `DOMException.name` 翻译（`NotAllowedError`→权限拒绝、`NotFoundError`/`OverconstrainedError`→设备缺失），其余透出原文
 
 ### lexicon（词库）
 
-- `initLexicon`：启动时先 `await refreshEnabledPinyinMap()` 预热启用词条映射（后续消费方如识别后处理依赖其已就绪），再注册 `workspace.on("editor-menu")`，选中文本非空（trim 后）时在右键菜单追加"添加到词库"项（图标 `book-plus`）；经 `EventRef` 退订（`Workspace.off` 的宽泛签名与窄回调不兼容），返回同步清理函数由 `cleanFeatures` 回收
+- `initLexicon`：启动时先 `await refreshEnabledPinyinMap()` 预热启用词条映射（后续消费方如识别后处理依赖其已就绪），再注册 `workspace.on("editor-menu")`，选中文本非空（trim 后）时在右键菜单追加"添加到词库"项（图标 `book-plus`）；经 `EventRef` 退订（`Workspace.off` 的宽泛签名与窄回调不兼容），另注册编辑器后处理扩展（`targetField` + `targetClickHandler`），返回同步清理函数由 `cleanFeatures` 回收
 - 添加语义：拼音经 `toPinyin` 自动生成、权重 0、默认启用；写入前经 `findLexiconEntry` 按 word+pinyin 严格一致查重，已存在则 `Notice` 提示且不写入；成功与失败分别经 `lexicon.added`/`lexicon.addFailed` 提示；写入经词库 core 广播变更，已打开的侧边栏词库页静默刷新实时反映
+- 识别后处理：`findTargets(text, baseFrom)` 以 `getEnabledPinyinMap()` 的键为匹配目标，逐键经 pinyin-pro `match`（`every` + `lastPrecision: every` + `continuous` + `v`，整词严格同音）扫描本次识别插入的文本，过滤非纯汉字片段（`match` 会把拉丁字符逐字母当拼音），跳过无替代项片段（该拼音唯一候选且与文本一致），同片段多音合并 keys，重叠片段按起点升序贪心保留（RangeSet 要求互不重叠）；结果经 `setTargetsEffect` 由 `targetField` 渲染 `.target-word` 装饰（`data-keys` 存拼音键）
+- 点击替换：`EditorView.domEventHandlers` 的 click 处理器（编辑器视图直接可得、弹出窗口同样生效）打开 `Menu`，候选取自 keys 对应最新映射并排除当前文本，空则不弹；选中后单事务替换并携带 `dismissTargetEffect`（旧坐标）只清除该处高亮，其余装饰随变更自动映射；样式为 `--text-accent` 点状下划线 + 指针（styles.css）
 
 ## utils（工具）
 
@@ -195,7 +197,7 @@
 2. **类型**：strict 全开（含 `noUncheckedIndexedAccess`）；禁止 `any` 与隐式 any
 3. **模块**：`cores/`（核心能力）与 `features/`（业务功能）下的每个模块均按三段式组织：`index.ts`（统一出口，仅 re-export）、`types.ts`（类型定义）、`cores.ts`（核心逻辑）。其中 init 型模块（i18n/settings/sidebar）导出 `init<模块>()` 并由 `src/cores/index.ts` 聚合为 `initCores()`；单例型模块（sherpa-server/audio-capture/sherpa-client/lexicon）无 init，暴露单例/函数由 features 或 settings 按需调用；feature 模块导出 `init<模块>()` 并返回同步清理函数，由 `src/features/index.ts` 聚合为 `initFeatures()`/`cleanFeatures()`；`main.ts` 各调用一次；init 方法参数一律使用具体类 `LocalSpeechRecognitionPlugin`，且导入一律为 `import type`（类型层循环在编译期擦除，运行时无循环）；模块特有文件（如 i18n 的 `locales/`、sidebar 的 `components/` 与 `lexicon-entry-modal.ts`、settings 的 `connection.ts`/`service-actions.ts`/`microphone-options.ts`、audio-capture 的 `worklet.ts`）直接置于模块目录下，不受三段式约束
 4. **注释**：中文，写"为什么"而非"是什么"；不做多余注释。导出声明（类/接口/函数/常量/属性）一律使用 JSDoc（`/** */`），内部逻辑用行注释；`@param`/`@returns` 仅在参数或返回值存在需要说明的语义时使用，不机械全量添加；纯 re-export 的 index.ts 无需注释
-5. **约束**：桌面 Node 能力（`child_process` 等）须 `Platform.isDesktop` 守卫后同步 `require()`（Obsidian 以 CJS 加载插件，原生动态 `import("node:...")` 会被当网络模块抓取而失败；`require` 处加带描述的 eslint-disable）；src 内禁止顶层 `node:` 导入（含 `import type`，用窄结构类型代替 Node 类型），对应 `obsidianmd/no-nodejs-modules` 规则；禁止 Electron API；`@codemirror/*` 已外部化，一律 `import type`，运行时经鸭子类型访问；涉及用户激活的 DOM 操作（文件选择、下载锚点）一律使用 `activeDocument`/`activeWindow`——设置窗口可能运行在弹出窗口，全局 `document` 指向主窗口会丢失用户激活
+5. **约束**：桌面 Node 能力（`child_process` 等）须 `Platform.isDesktop` 守卫后同步 `require()`（Obsidian 以 CJS 加载插件，原生动态 `import("node:...")` 会被当网络模块抓取而失败；`require` 处加带描述的 eslint-disable）；src 内禁止顶层 `node:` 导入（含 `import type`，用窄结构类型代替 Node 类型），对应 `obsidianmd/no-nodejs-modules` 规则；禁止 Electron API；`@codemirror/*` 已外部化，值导入仅限编辑器扩展实现所需的 `@codemirror/state`/`@codemirror/view`（与 Obsidian 共享同一模块实例），`cm-utils.ts` 等鸭子类型探测仍 `import type`；涉及用户激活的 DOM 操作（文件选择、下载锚点）一律使用 `activeDocument`/`activeWindow`——设置窗口可能运行在弹出窗口，全局 `document` 指向主窗口会丢失用户激活
 6. **依赖**：确认可 bundle 或需加入 esbuild `external` 列表；跨模块依赖方向为 utils ← cores ← features，例外为 `utils/sherpa-process.ts` 对 `cores/*/types` 的 type-only 回指与 settings 对进程/硬件的两个特有文件调用（见核心能力）
 7. **Svelte**：组件使用 runes（`$props`/`$state`/`$derived`/`$effect`），`$effect` 内订阅须返回退订函数；模板中的 `t()` 需外包 `{#key langTick}` 以支持语言切换重建；组件样式作用域内，class 前缀统一 `novel-`
 8. **格式**：由 `.prettierrc` 统一控制——2 空格缩进、双引号、128 列、LF 行尾（与 `.editorconfig` 一致）

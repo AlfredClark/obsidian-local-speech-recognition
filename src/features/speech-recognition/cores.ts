@@ -8,7 +8,7 @@ import { int16ToFloat32Normalized, mergeInt16Chunks } from "../../utils/audio";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
-import type { StateEffect } from "@codemirror/state";
+import { findTargets, setTargetsEffect } from "../lexicon";
 
 /** 超长录音强制截断秒数：服务端 max-utterance-length 默认 300 秒，客户端提前截断避免被拒连 */
 const MAX_RECORDING_SECONDS = 280;
@@ -193,15 +193,14 @@ class SpeechController {
     if (view !== null && view.getMode() === "source" && editor?.hasFocus() === true) {
       const cmView = getCodeMirrorEditorView(editor);
       if (cmView !== null) {
-        // 后处理注入点：setDiagnostics() 等 effect 在此拼入，勿删 key，保持单事务原子性
-        const diagnosticsEffects: Array<StateEffect<unknown>> = [];
         try {
           const { from, to } = cmView.state.selection.main;
+          const targets = findTargets(text, from);
           cmView.dispatch({
             changes: { from, to, insert: text },
             // selection: { anchor: from, head: from + text.length },   // 自动选中输入文本
             selection: { anchor: from + text.length }, // 光标自动移动到末尾
-            effects: diagnosticsEffects,
+            effects: [setTargetsEffect.of(targets)],
             scrollIntoView: true,
           });
           new Notice(t("recognition.transcribed"), 3000);

@@ -1,2 +1,8 @@
-/** 词库 feature 模块暂无对外类型，保留文件以满足三段式约定 */
-export type LexiconFeatureState = "idle";
+/** 词库 feature 模块对外类型 */
+
+/** 识别文本中命中词库拼音的片段；keys 为该片段命中的拼音键，点击时据此解析候选词 */
+export interface LexiconTarget {
+  from: number;
+  to: number;
+  keys: string[];
+}

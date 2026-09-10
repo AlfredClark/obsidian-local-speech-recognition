@@ -54,7 +54,6 @@ export async function refreshEnabledPinyinMap(): Promise<void> {
     for (const [key, words] of next) {
       enabledPinyinMap.set(key, words);
     }
-    console.log(enabledPinyinMap)
   } catch {
     // 静默：保留上一次映射
   }

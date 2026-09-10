@@ -6,3 +6,9 @@
 如果插件不需要 CSS，请删除此文件。
 
 */
+.target-word {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
