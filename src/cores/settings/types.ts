@@ -28,4 +28,6 @@ export interface LocalSpeechRecognitionPluginSettings {
   inputMode: SpeechInputMode;
   /** 语音输入麦克风设备 id；空字符串表示系统默认设备 */
   microphoneDeviceId: string;
+  /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
+  lexiconEnabled: boolean;
 }

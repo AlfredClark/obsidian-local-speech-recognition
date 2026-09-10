@@ -372,11 +372,13 @@ class SherpaServer implements SherpaServerManager {
    * @param handle 刚拉起的子进程句柄
    */
   private attachLogDrain(handle: ManagedProcess): void {
-    handle.stdout?.on("data", (chunk) => {
-      console.debug(`[sherpa-onnx] ${String(chunk).trimEnd()}`);
+    handle.stdout?.on("data", (_chunk) => {
+      /* ignore */
+      // console.debug(`[sherpa-onnx] ${String(chunk).trimEnd()}`);
     });
-    handle.stderr?.on("data", (chunk) => {
-      console.error(`[sherpa-onnx] ${String(chunk).trimEnd()}`);
+    handle.stderr?.on("data", (_chunk) => {
+      /* ignore */
+      // console.error(`[sherpa-onnx] ${String(chunk).trimEnd()}`);
     });
   }
 

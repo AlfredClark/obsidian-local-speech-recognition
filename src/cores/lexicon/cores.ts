@@ -19,6 +19,29 @@ const enabledPinyinMap = new Map<string, string[]>();
 /** 映射重建代际号：并发重建时仅最后一次回包生效，防止旧读覆盖新数据 */
 let pinyinRefreshGeneration = 0;
 
+/** 词库功能总开关；关闭时映射清空，识别后处理不产生候选，读写词条不受影响 */
+let lexiconEnabled = true;
+
+/** 当前词库功能是否启用；供需要短路的高频路径（如识别后处理）判断 */
+export function isLexiconEnabled(): boolean {
+  return lexiconEnabled;
+}
+
+/**
+ * 设置词库运行时开关：关闭时清空拼音映射并作废在途重建（防止关闭后被旧回包重新填充），
+ * 开启时重建映射。由 features/lexicon 控制器在设置开关变化时调用，与持久化设置保持同步。
+ * @param enabled 是否启用词库功能
+ */
+export async function setLexiconEnabled(enabled: boolean): Promise<void> {
+  lexiconEnabled = enabled;
+  if (!enabled) {
+    pinyinRefreshGeneration += 1;
+    enabledPinyinMap.clear();
+    return;
+  }
+  await refreshEnabledPinyinMap();
+}
+
 /**
  * 获取启用词条映射：key 为去空白并小写的拼音，value 为词语列表（权重降序、其次 id 降序）。
  * 返回只读视图且为同一实例，词库变更后自动可见新数据。
@@ -33,6 +56,8 @@ export function getEnabledPinyinMap(): ReadonlyMap<string, readonly string[]> {
  * 读取失败静默保留旧映射，消费方降级为无增强，不打断主流程。
  */
 export async function refreshEnabledPinyinMap(): Promise<void> {
+  // 关闭状态下不重建：写入变更触发的重建同样被拦截，映射保持为空
+  if (!lexiconEnabled) return;
   const generation = ++pinyinRefreshGeneration;
   try {
     const entries = await listLexiconEntries();

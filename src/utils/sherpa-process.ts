@@ -1,6 +1,7 @@
-import type { TranslationKey } from "../cores/i18n/types";
+import type { TranslationKey } from "../cores/i18n";
 // 方向为例外：SherpaServerConfig 唯一源在 cores/sherpa-server/types，utils 仅借类型签名；type-only 跨层回指编译期擦除，运行时无循环。
-import type { SherpaServerConfig } from "../cores/sherpa-server/types";
+import type { SherpaServerConfig } from "../cores/sherpa-server";
+import { Platform } from "obsidian";
 
 /**
  * 组装 websocket 服务地址。host 为空时回退 127.0.0.1，避免拼出非法地址。
@@ -32,11 +33,13 @@ export function validateSherpaConfig(config: SherpaServerConfig): TranslationKey
  */
 export function buildSherpaArgs(config: SherpaServerConfig): string[] {
   const modelDir = config.modelPath.trim().replace(/[/\\]+$/, "");
+  const logPath = Platform.isWin ? `--log-file=NUL` : Platform.isLinux || Platform.isMacOS ? `--log-file=/dev/null` : ``;
   return [
     `--port=${config.port}`,
     `--num-threads=${config.numThreads}`,
     `--sense-voice-model=${modelDir}/model.int8.onnx`,
     `--sense-voice-use-itn=1`,
     `--tokens=${modelDir}/tokens.txt`,
+    logPath,
   ];
 }

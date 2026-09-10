@@ -1,11 +1,17 @@
-import { Notice } from "obsidian";
-import { type Editor, Menu } from "obsidian";
+import { type Editor, type EventRef, Menu, Notice } from "obsidian";
 import { match } from "pinyin-pro";
-import { addLexiconEntry, findLexiconEntry, getEnabledPinyinMap, refreshEnabledPinyinMap } from "../../cores/lexicon";
+import {
+  addLexiconEntry,
+  findLexiconEntry,
+  getEnabledPinyinMap,
+  isLexiconEnabled,
+  setLexiconEnabled,
+} from "../../cores/lexicon";
+import { subscribeLexiconEnabledChange } from "../../cores/settings";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
-import { StateEffect, StateField } from "@codemirror/state";
+import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import type { LexiconTarget } from "./types";
 
@@ -19,32 +25,99 @@ const MATCH_OPTIONS = { precision: "every", lastPrecision: "every", continuous: 
 const HAN_ONLY = /^\p{Script=Han}+$/u;
 
 /**
- * 初始化词库功能：预热启用词条拼音映射，在编辑器右键菜单注册"添加到词库"项（仅在存在选中文本时出现），
- * 并注册识别后处理扩展（高亮 + 点击替换）。
- * 返回同步清理函数：显式退订 editor-menu，由 cleanFeatures 卸载时回收。
+ * 初始化词库功能：按「启用词库」开关动态挂载编辑器集成——
+ * 右键菜单"添加到词库"与识别后处理扩展（高亮 + 点击替换），并预热启用词条拼音映射。
+ * 订阅设置广播，开关切换时即时注册/注销，关闭后不残留监听与扩展。
+ * 返回同步清理函数：退订广播并整体停用，由 cleanFeatures 卸载时回收。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
- * @returns 卸载时退订菜单监听的清理函数
+ * @returns 卸载时停用集成并退订的清理函数
  */
 export async function initLexicon(plugin: LocalSpeechRecognitionPlugin): Promise<() => void> {
-  // 预热映射：后续消费方（如识别后处理）依赖其已就绪；写入变更由词库 core 自动重建
-  await refreshEnabledPinyinMap();
-  const handler = (menu: Menu, editor: Editor): void => {
-    const word = editor.getSelection().trim();
-    if (word === "") return;
-    menu.addItem((item) =>
-      item
-        .setTitle(t("lexicon.addSelection"))
-        .setIcon("book-plus")
-        .onClick(() => void addSelection(word)),
-    );
-  };
-  // 经 EventRef 退订：Workspace.off 的签名是宽泛的 (...data: unknown[])，直接传窄签名回调无法通过类型检查
-  const ref = plugin.app.workspace.on("editor-menu", handler);
-  // 后处理扩展随插件编辑器实例注册：点击处理经 domEventHandlers（编辑器视图直接可得，弹出窗口同样生效）
-  plugin.registerEditorExtension([targetField, targetClickHandler]);
+  const integration = new LexiconIntegration(plugin);
+  const unsubscribe = subscribeLexiconEnabledChange((enabled) => void integration.apply(enabled));
+  await integration.apply(plugin.settings.lexiconEnabled);
   return () => {
-    plugin.app.workspace.offref(ref);
+    unsubscribe();
+    integration.dispose();
   };
+}
+
+/**
+ * 词库编辑器集成的启停控制器。
+ * CM6 扩展经可变数组承载：registerEditorExtension 只注册一次，之后增删数组内容并调用
+ * workspace.updateOptions 即可运行时生效（Obsidian 官方指定的热配置方式，无注销 API）。
+ */
+class LexiconIntegration {
+  private plugin: LocalSpeechRecognitionPlugin;
+  /** 可变扩展数组；空数组表示关闭，扩展整体不生效 */
+  private extensions: Extension[] = [];
+  /** editor-menu 事件句柄；非空表示已注册，经 offref 注销 */
+  private menuRef: EventRef | null = null;
+  /** 已停用标志；dispose 后到达的广播回调直接丢弃 */
+  private disposed = false;
+
+  constructor(plugin: LocalSpeechRecognitionPlugin) {
+    this.plugin = plugin;
+    // 注册一次空数组，后续靠增删 + updateOptions 启停，避免重复注册导致扩展叠加
+    plugin.registerEditorExtension(this.extensions);
+  }
+
+  /**
+   * 应用开关状态：启用时补挂扩展与菜单并预热映射，关闭时移除扩展、注销菜单并清空映射。
+   * @param enabled 最新启用状态
+   */
+  async apply(enabled: boolean): Promise<void> {
+    if (this.disposed) return;
+    if (enabled) {
+      if (this.extensions.length === 0) {
+        this.extensions.push(targetField, targetClickHandler);
+        this.plugin.app.workspace.updateOptions();
+      }
+      if (this.menuRef === null) {
+        this.menuRef = this.plugin.app.workspace.on("editor-menu", handleEditorMenu);
+      }
+    } else {
+      if (this.extensions.length > 0) {
+        this.extensions.length = 0;
+        this.plugin.app.workspace.updateOptions();
+      }
+      if (this.menuRef !== null) {
+        this.plugin.app.workspace.offref(this.menuRef);
+        this.menuRef = null;
+      }
+    }
+    // 词库 core 运行时开关：关闭时清空映射，识别后处理自然无候选
+    await setLexiconEnabled(enabled);
+  }
+
+  /** 停用集成并退订菜单；映射一并清空，卸载后不残留高亮候选 */
+  dispose(): void {
+    this.disposed = true;
+    if (this.menuRef !== null) {
+      this.plugin.app.workspace.offref(this.menuRef);
+      this.menuRef = null;
+    }
+    if (this.extensions.length > 0) {
+      this.extensions.length = 0;
+    }
+    void setLexiconEnabled(false);
+  }
+}
+
+/**
+ * 右键菜单处理器：仅在存在非空选中文本时追加"添加到词库"。
+ * @param menu 右键菜单
+ * @param editor 触发菜单的编辑器
+ */
+function handleEditorMenu(menu: Menu, editor: Editor): void {
+  const word = editor.getSelection().trim();
+  if (word === "") return;
+  menu.addItem((item) =>
+    item
+      .setTitle(t("lexicon.addSelection"))
+      .setIcon("book-plus")
+      .onClick(() => void addSelection(word)),
+  );
 }
 
 /**
@@ -171,6 +244,8 @@ function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void 
  * @returns 高亮目标列表
  */
 export function findTargets(text: string, baseFrom: number): LexiconTarget[] {
+  // 词库关闭时直接跳过扫描：映射已清空，此处短路同时避免无谓遍历
+  if (!isLexiconEnabled()) return [];
   const map = getEnabledPinyinMap();
   const spans = new Map<string, { start: number; end: number; keys: Set<string> }>();
   for (const [key, words] of map) {

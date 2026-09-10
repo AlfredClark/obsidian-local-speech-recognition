@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { subscribeLanguageChange, t } from "../../i18n";
+  import { subscribeLexiconEnabledChange } from "../../settings";
   import type LocalSpeechRecognitionPlugin from "../../../main";
   import type { SidebarPage } from "../types";
   import LexiconPage from "./LexiconPage.svelte";
@@ -14,16 +16,33 @@
   /** 语言版本标记；语言切换时递增，{#key} 强制重建内容块使模板中的 t() 重新求值 */
   let langTick = $state(0);
 
-  // 订阅语言变更并在卸载时自动退订；t() 为普通函数调用，Svelte 无法追踪其依赖，须经 #key 重建
+  /** 词库启用状态；关闭时隐藏词库 tab，与设置页开关经广播保持同步。初始值只取一次快照（plugin.settings 非响应式） */
+  let lexiconEnabled = $state(untrack(() => plugin.settings.lexiconEnabled));
+
+  // 订阅语言与词库开关变更并在卸载时自动退订；t() 为普通函数调用，Svelte 无法追踪其依赖，须经 #key 重建
   $effect(() => {
-    return subscribeLanguageChange(() => (langTick += 1));
+    const unsubscribeLanguage = subscribeLanguageChange(() => (langTick += 1));
+    const unsubscribeLexicon = subscribeLexiconEnabledChange((enabled) => (lexiconEnabled = enabled));
+    return () => {
+      unsubscribeLanguage();
+      unsubscribeLexicon();
+    };
   });
 
-  /** tab 配置列表；新增页面时在此追加条目并在下方 {#if} 分支补充组件 */
-  const TABS: Array<{ id: SidebarPage; label: () => string }> = [
-    { id: "lexicon", label: () => t("sidebar.lexicon") },
-    { id: "service", label: () => t("sidebar.service") },
-  ];
+  // 词库被关闭时若正停留在词库页则切到服务页，避免渲染已隐藏页面的内容
+  $effect(() => {
+    if (!lexiconEnabled && activePage === "lexicon") activePage = "service";
+  });
+
+  /** tab 配置列表；词库关闭时仅保留服务页，新增页面时在此追加条目并在下方 {#if} 分支补充组件 */
+  const TABS: Array<{ id: SidebarPage; label: () => string }> = $derived(
+    lexiconEnabled
+      ? [
+          { id: "lexicon", label: () => t("sidebar.lexicon") },
+          { id: "service", label: () => t("sidebar.service") },
+        ]
+      : [{ id: "service", label: () => t("sidebar.service") }],
+  );
 </script>
 
 {#key langTick}
@@ -41,7 +60,7 @@
       {/each}
     </nav>
     <div class="novel-sidebar-content">
-      {#if activePage === "lexicon"}
+      {#if activePage === "lexicon" && lexiconEnabled}
         <LexiconPage {plugin} />
       {:else}
         <ServicePage {plugin} />

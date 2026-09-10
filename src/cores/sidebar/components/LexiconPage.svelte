@@ -80,15 +80,19 @@
     };
   });
 
-  /** 前端筛选：启用状态与搜索关键字叠加，对 word/pinyin 做大小写不敏感的子串匹配 */
+  /**
+   * 前端筛选与排序：启用状态与搜索关键字叠加，对 word/pinyin 做大小写不敏感的子串匹配；
+   * 展示顺序为权重降序、同权重 id 降序（最新在前），与后处理映射的候选优先级一致。
+   */
   const filtered = $derived.by(() => {
     const keyword = query.trim().toLowerCase();
-    return entries.filter((entry) => {
+    const matched = entries.filter((entry) => {
       if (enableFilter === "enabled" && !entry.enable) return false;
       if (enableFilter === "disabled" && entry.enable) return false;
       if (keyword === "") return true;
       return entry.word.toLowerCase().includes(keyword) || entry.pinyin.toLowerCase().includes(keyword);
     });
+    return matched.sort((a, b) => b.weight - a.weight || b.id - a.id);
   });
 
   /** 当前筛选结果中的勾选数量 */

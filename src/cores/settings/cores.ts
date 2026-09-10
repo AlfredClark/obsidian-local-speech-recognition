@@ -20,7 +20,29 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   autoStartServer: false,
   inputMode: "toggle",
   microphoneDeviceId: "",
+  lexiconEnabled: true,
 };
+
+/** 词库开关变更订阅回调集合；设置页写入后广播，词库 feature 与侧边栏据此启停 */
+const lexiconEnabledListeners = new Set<(enabled: boolean) => void>();
+
+/**
+ * 订阅词库开关变更。开关键仅在设置页被切换（settings 层写入后广播），
+ * 订阅方据此动态注册/注销编辑器集成、显隐侧边栏词库页。
+ * @param listener 开关变更回调，参数为最新启用状态
+ * @returns 取消订阅函数
+ */
+export function subscribeLexiconEnabledChange(listener: (enabled: boolean) => void): () => void {
+  lexiconEnabledListeners.add(listener);
+  return () => {
+    lexiconEnabledListeners.delete(listener);
+  };
+}
+
+/** 广播词库开关变更。由 settings 模块在 lexiconEnabled 写入后调用 */
+function notifyLexiconEnabledChange(enabled: boolean): void {
+  lexiconEnabledListeners.forEach((listener) => listener(enabled));
+}
 
 /**
  * 初始化设置模块：加载持久化设置并注册设置页。
@@ -111,6 +133,10 @@ export class SettingsTab extends PluginSettingTab {
     // 语言切换广播：设置页 update() 只重渲染自身，依赖 t() 的其他 UI 靠订阅刷新
     if (key === "language") {
       notifyLanguageChange();
+    }
+    // 词库开关广播：编辑器集成与侧边栏词库页靠订阅动态启停
+    if (key === "lexiconEnabled") {
+      notifyLexiconEnabledChange(value === true);
     }
     void this.update();
   }
@@ -291,14 +317,25 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
-   * 词库管理条目：导出/导入（JSON 或每行一词的纯文本）/清空。
-   * 均为非持久化动作行，点击委托 lexicon-actions.ts，反馈经 Notice 提示。
+   * 词库设置条目：启用开关 + 导出/导入（JSON 或每行一词的纯文本）/清空。
+   * 开关为持久化设置，其余为动作行（点击委托 lexicon-actions.ts，反馈经 Notice 提示），
+   * 动作行随开关隐藏，关闭词库时不再暴露管理入口。
    */
   private getLexiconItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
     return [
       {
+        name: t("settings.lexiconEnable"),
+        desc: t("settings.lexiconEnableDesc"),
+        control: {
+          type: "toggle",
+          key: "lexiconEnabled",
+          defaultValue: true,
+        },
+      },
+      {
         name: t("settings.lexiconExport"),
         desc: t("settings.lexiconExportDesc"),
+        visible: () => this.plugin.settings.lexiconEnabled,
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.lexiconExport")).onClick(() => {
@@ -310,6 +347,7 @@ export class SettingsTab extends PluginSettingTab {
       {
         name: t("settings.lexiconImport"),
         desc: t("settings.lexiconImportDesc"),
+        visible: () => this.plugin.settings.lexiconEnabled,
         render: (setting) => {
           setting.addButton((button) =>
             button.setButtonText(t("settings.lexiconImport")).onClick(() => {
@@ -321,6 +359,7 @@ export class SettingsTab extends PluginSettingTab {
       {
         name: t("settings.lexiconClear"),
         desc: t("settings.lexiconClearDesc"),
+        visible: () => this.plugin.settings.lexiconEnabled,
         render: (setting) => {
           setting.addButton((button) =>
             button
