@@ -6,6 +6,20 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 import { openWebSocket } from "./connection";
 
 /**
+ * 打开插件设置页：经未公开的 setting/openTabById 链路直达本插件 tab，
+ * 公开 API 无此能力，缺失时静默返回。
+ * @param plugin 插件实例
+ */
+export function openSettings(plugin: LocalSpeechRecognitionPlugin): void {
+  const app = plugin.app as unknown as {
+    setting?: { open(): void; openTabById(id: string): void };
+  };
+  if (typeof app.setting?.open !== "function" || typeof app.setting?.openTabById !== "function") return;
+  app.setting.open();
+  app.setting.openTabById(plugin.manifest.id);
+}
+
+/**
  * 错误详情提取：Error 取 message，其余类型转字符串，保证 Notice 文案可读。
  * settings 模块内复用，原散落在 cores.ts 与 sherpa-server/cores.ts 两处，此处收敛一处。
  * @param error 捕获到的未知错误

@@ -1,6 +1,7 @@
 import { initI18n } from "./i18n";
 import { initSettings } from "./settings";
 import type LocalSpeechRecognitionPlugin from "../main";
+import { initSidebar } from "./sidebar";
 
 /**
  * 聚合初始化全部 core 模块（设置、i18n 等共享基础设施）。
@@ -12,4 +13,5 @@ import type LocalSpeechRecognitionPlugin from "../main";
 export async function initCores(plugin: LocalSpeechRecognitionPlugin): Promise<void> {
   initI18n(plugin);
   await initSettings(plugin);
+  await initSidebar(plugin);
 }
