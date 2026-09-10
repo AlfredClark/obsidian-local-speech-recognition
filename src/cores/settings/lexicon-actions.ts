@@ -94,7 +94,7 @@ class ClearLexiconModal extends Modal {
   }
 
   onOpen(): void {
-    this.setTitle(t("lexicon.clearTitle"));
+    this.setTitle(t("settings.lexiconClear"));
     this.contentEl.createEl("p", { text: t("lexicon.clearDesc", { count: this.count }) });
     const actions = this.contentEl.createDiv();
     new ButtonComponent(actions).setButtonText(t("sidebar.lexiconCancel")).onClick(() => this.close());

@@ -1,4 +1,5 @@
 import type { PluginLanguage } from "../i18n";
+import type { SherpaModelId } from "../../utils/sherpa-process";
 
 /** 语音输入触发模式：toggle 单次点击切换，push-to-talk 按住说话 */
 export type SpeechInputMode = "toggle" | "push-to-talk";
@@ -16,6 +17,8 @@ export interface LocalSpeechRecognitionPluginSettings {
   binaryPath: string;
   /** sherpa-onnx 模型文件夹路径 */
   modelPath: string;
+  /** 使用的识别模型标识（模型登记表键） */
+  modelType: SherpaModelId;
   /** 服务监听主机 */
   host: string;
   /** 服务监听端口 */

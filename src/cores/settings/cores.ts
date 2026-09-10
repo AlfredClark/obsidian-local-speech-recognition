@@ -7,6 +7,7 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 import { MicrophoneStore } from "./microphone-options";
 import { clearLexicon, exportLexicon, importLexicon } from "./lexicon-actions";
 import { restartService, startService, stopService, testConnection } from "./service-actions";
+import { DEFAULT_SHERPA_MODEL_ID, isSherpaModelId, SHERPA_MODELS } from "../../utils/sherpa-process";
 
 /** 设置默认值。data.json 缺失字段时（如旧版本升级）以此为兜底合并 */
 export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   language: "system",
   binaryPath: "",
   modelPath: "",
+  modelType: DEFAULT_SHERPA_MODEL_ID,
   host: "127.0.0.1",
   port: 6006,
   numThreads: 4,
@@ -84,7 +86,12 @@ export async function initSettings(plugin: LocalSpeechRecognitionPlugin): Promis
  */
 export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promise<LocalSpeechRecognitionPluginSettings> {
   const data = (await plugin.loadData()) as Partial<LocalSpeechRecognitionPluginSettings> | null;
-  return { ...DEFAULT_SETTINGS, ...data };
+  const settings = { ...DEFAULT_SETTINGS, ...data };
+  // 模型登记表条目可能被移除或改名：未知标识回退默认模型，避免下拉与启动参数落空
+  if (!isSherpaModelId(settings.modelType)) {
+    settings.modelType = DEFAULT_SHERPA_MODEL_ID;
+  }
+  return settings;
 }
 
 /**
@@ -205,6 +212,16 @@ export class SettingsTab extends PluginSettingTab {
           key: "modelPath",
           defaultValue: "",
           placeholder: t("settings.modelPathPlaceholder"),
+        },
+      },
+      {
+        name: t("settings.modelType"),
+        desc: t("settings.modelTypeDesc"),
+        control: {
+          type: "dropdown",
+          key: "modelType",
+          defaultValue: DEFAULT_SHERPA_MODEL_ID,
+          options: Object.fromEntries(Object.entries(SHERPA_MODELS).map(([id, model]) => [id, model.name])),
         },
       },
       {

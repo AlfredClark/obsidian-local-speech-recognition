@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSherpaServer } from "../../sherpa-server";
   import type { SherpaServerStatus } from "../../sherpa-server";
-  import { resolveSherpaUrl } from "../../../utils/sherpa-process";
+  import { resolveSherpaUrl, SHERPA_MODELS } from "../../../utils/sherpa-process";
   import { subscribeLanguageChange, t } from "../../i18n";
   import type { TranslationKey } from "../../i18n";
   import { openSettings, restartService, startService, stopService, testConnection } from "../../settings/service-actions";
@@ -64,9 +64,11 @@
     <p class="novel-service-value">{displayPath(plugin.settings.binaryPath)}</p>
     <h4>{t("sidebar.serviceModel")}</h4>
     <p class="novel-service-value">{displayPath(plugin.settings.modelPath)}</p>
-    <h4>{t("sidebar.serviceHost")}</h4>
+    <h4>{t("settings.modelType")}</h4>
+    <p>{SHERPA_MODELS[plugin.settings.modelType].name}</p>
+    <h4>{t("settings.host")}</h4>
     <p>{plugin.settings.host}</p>
-    <h4>{t("sidebar.servicePort")}</h4>
+    <h4>{t("settings.port")}</h4>
     <p>{plugin.settings.port}</p>
     <h4>{t("sidebar.serviceThreads")}</h4>
     <p>{plugin.settings.numThreads}</p>
@@ -77,18 +79,18 @@
     <p>
       {#if status === "stopped" || status === "error"}
         <button type="button" disabled={busy} onclick={() => void startService(plugin)}>
-          {t("sidebar.serviceStart")}
+          {t("settings.serviceStart")}
         </button>
       {:else}
         <button type="button" disabled={busy} onclick={() => stopService(plugin)}>
-          {t("sidebar.serviceStop")}
+          {t("settings.serviceStop")}
         </button>
         <button type="button" disabled={busy} onclick={() => void restartService(plugin)}>
-          {t("sidebar.serviceRestart")}
+          {t("settings.serviceRestart")}
         </button>
       {/if}
       <button type="button" disabled={busy} onclick={() => void testConnection(plugin)}>
-        {t("sidebar.testConnection")}
+        {t("settings.testConnection")}
       </button>
       <button type="button" onclick={() => openSettings(plugin)}>
         {t("sidebar.openSettings")}

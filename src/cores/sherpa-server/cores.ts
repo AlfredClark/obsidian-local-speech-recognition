@@ -418,8 +418,8 @@ export function getSherpaServer(): SherpaServerManager {
  * @returns 服务启动配置
  */
 export function toServerConfig(plugin: LocalSpeechRecognitionPlugin): SherpaServerConfig {
-  const { binaryPath, modelPath, host, port, numThreads } = plugin.settings;
-  return { binaryPath, modelPath, host, port, numThreads };
+  const { binaryPath, modelPath, modelType, host, port, numThreads } = plugin.settings;
+  return { binaryPath, modelPath, modelType, host, port, numThreads };
 }
 
 /**

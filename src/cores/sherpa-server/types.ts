@@ -1,9 +1,13 @@
+import type { SherpaModelId } from "../../utils/sherpa-process";
+
 /** sherpa-onnx websocket 服务的启动配置，由插件设置组装而来 */
 export interface SherpaServerConfig {
   /** sherpa-onnx-offline-websocket-server 可执行文件路径 */
   binaryPath: string;
   /** 模型文件夹路径 */
   modelPath: string;
+  /** 识别模型标识：模型登记表键，决定 --xxx-model 等模型专属参数 */
+  modelType: SherpaModelId;
   /** 服务监听主机 */
   host: string;
   /** 服务监听端口 */
