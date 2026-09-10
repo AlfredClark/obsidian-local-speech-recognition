@@ -14,18 +14,66 @@ Offline speech recognition in Obsidian, powered by a locally deployed sherpa-onn
 - Lexicon (designed for Chinese): add words from the editor context menu; after a transcription, matching words are underlined and can be clicked to replace with a same-pinyin alternative. Optional fuzzy pinyin matching tolerates retroflex/nasal confusions.
 - Sidebar view (ribbon icon): a Lexicon tab for managing entries and a Service tab for controlling the service.
 - Service management: manual start/stop/restart, auto-start on plugin load, and a connection test.
+- Selectable recognition models: SenseVoice, FunASR and Paraformer families with int8/fp16/fp32 variants, each started with its own parameters (see [Supported models](#supported-models)).
 - Trilingual UI: English / 简体中文 / 繁體中文, following the Obsidian interface language or set manually.
 
 ## Requirements
 
 - Obsidian 1.13.1 or later (uses the declarative settings API).
 - Desktop only. The plugin spawns a local subprocess and captures microphone audio, neither of which is available on mobile.
-- A `sherpa-onnx-offline-websocket-server` binary plus a model folder. Currently only the int8 build of `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` is supported: the folder must contain `model.int8.onnx` and `tokens.txt`. Other models need follow-up releases for adaptation.
+- A `sherpa-onnx-offline-websocket-server` binary (see [Choosing the server binary](#choosing-the-server-binary)) plus a model folder holding one of the supported models (see [Supported models](#supported-models)).
 
 ## Downloads
 
 - sherpa-onnx releases (server binaries): <https://github.com/k2-fsa/sherpa-onnx/releases>
 - Pre-trained ASR models: <https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models>
+
+### Choosing the server binary
+
+Each sherpa-onnx release ships pre-built archives for desktop platforms. Pick the one matching your OS and CPU, extract it, then point **Settings → Service settings → Server binary path** at the executable inside its `bin/` folder:
+
+- macOS / Linux: `<extracted-folder>/bin/sherpa-onnx-offline-websocket-server`
+- Windows: `<extracted-folder>/bin/sherpa-onnx-offline-websocket-server.exe`
+
+| Platform              | Archive to download                                          |
+| --------------------- | ------------------------------------------------------------ |
+| macOS (Apple silicon) | `sherpa-onnx-v<version>-osx-arm64-static.tar.bz2`            |
+| macOS (Intel)         | `sherpa-onnx-v<version>-osx-x64-static.tar.bz2`              |
+| macOS (both)          | `sherpa-onnx-v<version>-osx-universal2-static.tar.bz2`       |
+| Linux (x86_64)        | `sherpa-onnx-v<version>-linux-x64-static.tar.bz2`            |
+| Linux (ARM64)         | `sherpa-onnx-v<version>-linux-aarch64-static.tar.bz2`        |
+| Windows (x64)         | `sherpa-onnx-v<version>-win-x64-static-MD-Release.tar.bz2`   |
+| Windows (ARM64)       | `sherpa-onnx-v<version>-win-arm64-static-MD-Release.tar.bz2` |
+| Windows (32-bit)      | `sherpa-onnx-v<version>-win-x86-static-MD-Release.tar.bz2`   |
+
+Notes:
+
+- On Linux, when sherpa-onnx was installed through a package manager (pacman, yay, …) rather than a release archive, locate the installed binary with `whereis sherpa-onnx-offline-websocket-server` and use that path.
+- Prefer the `-static` archives: their executable is self-contained. The `-shared` variants additionally need the archive's `lib/` folder on the library search path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux, `DYLD_LIBRARY_PATH` on macOS).
+- Append `-no-tts` where available (e.g. `...-linux-x64-static-no-tts.tar.bz2`): the plugin only transcribes speech, and those archives are much smaller.
+- macOS may refuse to run the unsigned binary when a browser set the quarantine flag; clear it with `xattr -dr com.apple.quarantine <extracted-folder>`.
+
+### Supported models
+
+Pick a model under **Settings → Service settings → Recognition model**, then point **Model folder path** at the folder you extracted. That folder must contain the files listed below; extra files such as `test_wavs/` are ignored. Switching models takes effect the next time the service starts.
+
+| Recognition model | Model folder must contain                                                                 | Characteristics                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SenseVoice (int8) | `model.int8.onnx`, `tokens.txt`                                                           | Default. Mandarin, Cantonese, English, Japanese and Korean; ITN adds punctuation; small (~230 MB) and fast                                                                                       |
+| SenseVoice        | `model.onnx`, `tokens.txt`                                                                | The same model at full precision (~890 MB): slightly more accurate, but larger and slower                                                                                                        |
+| FunASR (int8)     | `encoder_adaptor.int8.onnx`, `llm.int8.onnx`, `embedding.int8.onnx`, `Qwen3-0.6B/`        | Uses Qwen3-0.6B as the decoder, the most accurate option here; Mandarin (7 dialect groups, 26 regional accents), English and Japanese, and it also handles sung lyrics. Large (~950 MB) and slow |
+| FunASR (fp16)     | `encoder_adaptor.int8.onnx`, `llm.fp16.onnx`, `embedding.int8.onnx`, `Qwen3-0.6B/`        | FunASR with an fp16 decoder (~1.5 GB); a middle ground between the int8 and fp32 builds                                                                                                          |
+| FunASR (fp32)     | `encoder_adaptor.onnx`, `llm.fp32.onnx`, `llm.fp32.data`, `embedding.onnx`, `Qwen3-0.6B/` | FunASR at full precision (~3.7 GB), the heaviest option; keep `llm.fp32.data` next to `llm.fp32.onnx`                                                                                            |
+| Paraformer (int8) | `model.int8.onnx`, `tokens.txt`                                                           | Non-autoregressive and the fastest model here (~220 MB); Chinese (some builds add English or Cantonese); the output carries no punctuation                                                       |
+| Paraformer        | `model.onnx`, `tokens.txt`                                                                | Paraformer at full precision (~790 MB), the largest of its family                                                                                                                                |
+
+`Qwen3-0.6B/` is a tokenizer folder, not a single file. Archives that match the table, from the ASR models release:
+
+- **SenseVoice**: `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (contains both `model.onnx` and `model.int8.onnx`) or `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` (int8 only).
+- **FunASR**: `sherpa-onnx-funasr-nano-int8-2025-12-30`, `sherpa-onnx-funasr-nano-fp16-2025-12-30`, and `sherpa-onnx-funasr-nano-2025-12-30` for fp32.
+- **Paraformer**: `sherpa-onnx-paraformer-zh-2024-03-09` and other archives of the same family — `-zh-small-2024-03-09` is the smallest, `-trilingual-zh-cantonese-en` adds Cantonese, `-zh-int8-2025-10-07` targets Sichuanese. Some builds (small, Sichuanese) ship `model.int8.onnx` only, so pair them with **Paraformer (int8)**.
+
+> Note: a model of the same architecture with different file names can in theory be forced to run by renaming its files to the names listed above, but this is not guaranteed to work.
 
 ## Installation
 
@@ -52,15 +100,16 @@ General:
 
 Service settings:
 
-| Setting            | Description                                                                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Server binary path | Path to the `sherpa-onnx-offline-websocket-server` executable                                                              |
-| Model folder path  | Folder with `model.int8.onnx` + `tokens.txt` from `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (int8 only for now) |
-| Host / Port        | Where the service listens (defaults `127.0.0.1` / `6006`)                                                                  |
-| CPU threads        | Threads used by the service neural network                                                                                 |
-| Test connection    | Dial the configured WebSocket address to check reachability                                                                |
-| Auto start server  | Start the service automatically when the plugin loads                                                                      |
-| Start/Stop/Restart | Manual lifecycle controls, shown depending on service status                                                               |
+| Setting            | Description                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Server binary path | Path to the `sherpa-onnx-offline-websocket-server` executable                                       |
+| Model folder path  | Folder holding the files required by the selected model (see [Supported models](#supported-models)) |
+| Recognition model  | Which supported model the service loads at start; takes effect on the next start                    |
+| Host / Port        | Where the service listens (defaults `127.0.0.1` / `6006`)                                           |
+| CPU threads        | Threads used by the service neural network                                                          |
+| Test connection    | Dial the configured WebSocket address to check reachability                                         |
+| Auto start server  | Start the service automatically when the plugin loads                                               |
+| Start/Stop/Restart | Manual lifecycle controls, shown depending on service status                                        |
 
 Speech input:
 

@@ -96,7 +96,7 @@
 
 ### settings（设置）
 
-- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底
+- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`
 - 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
@@ -104,6 +104,7 @@
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 并经 `plugin.register` 托管退订；配置变更仅手动生效，不自动重启
 - 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示
 - 连接测试：`connection.ts` 的 `openWebSocket(url)` 拨号即判活（5 秒超时），不消费消息
+- 识别模型下拉：`getSherpaItems` 的 `modelType` 选项由 `utils/sherpa-process.ts` 的 `SHERPA_MODELS` 登记表生成（展示名取条目 `name`，模型专有名词不翻译），默认 `DEFAULT_SHERPA_MODEL_ID`；`modelType` 随 `toServerConfig` 进入启动配置，由 `buildSherpaArgs` 按所选模型条目拼装参数；模型切换下次启动/重启生效，不自动重启
 - 词库启用开关：`getLexiconItems` 首位为 `lexiconEnabled` 开关（持久化，默认 `true`，关闭时停用全部词库界面与编辑器集成），其后为 `fuzzyMatchEnabled` 模糊音开关（持久化，默认 `false`），导出/导入/清空三行经 `visible: () => plugin.settings.lexiconEnabled` 随开关隐藏，模糊音开关同样随词库关闭隐藏；开关切换分别经 `notifyLexiconEnabledChange()`/`notifyFuzzyMatchChange()` 广播
 - 词库管理动作：`lexicon-actions.ts` 提供导出（`serializeLexiconFile` → Blob + 临时 `<a download>` 触发系统保存对话框，文件名为本地时间戳）、导入（隐藏 `<input type="file">` 选文件，按扩展名/首字符分流 JSON 与纯文本，与库内词条按 word+pinyin 严格去重保留已有、文件内重复保留首条，Notice 汇总新增/跳过/无效条数）与清空（`Modal` + `ButtonComponent.setDestructive()` 二次确认不可恢复，确认后 `clearLexiconEntries` 并提示删除条数）；空词库执行导出/清空前经 Notice 提示并中止；文件选择与下载锚点须挂在 `activeDocument`（设置窗口可能运行在弹出窗口，全局 `document` 不持有该窗口的用户激活，文件选择框会被 Chromium 拒绝）
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
@@ -128,7 +129,8 @@
 - restart 串行锁：`stop` 是 fire-and-forget，前一次 `restart` 未完成时返回 `already-restarting`；重启路径用 `stopImmediate()` 直接 SIGKILL，不让老进程占端口导致新进程 EADDRINUSE
 - 退出释放：应用关闭不保证走插件 `onunload`，feature 层同时订阅 `workspace.on("quit")` 与窗口 `beforeunload`，双路径调用同步强杀的 `dispose()`（直接 SIGKILL，不等 SIGTERM 宽限回调）；插件禁用/卸载仍走 `stop()` 正常关闭流程
 - 失败详情翻译：`resolveDetail` 将 `settings.missingBinaryPath`/`settings.missingModelPath` 映射为 `t()` 文案，运行时错误（退出码/超时等）原文透出；`toServerConfig` 从最近一次 `plugin.settings` 组装配置
-- sense-voice int8 参数（`buildSherpaArgs` 占位实现）：`--port=` + `--num-threads=` + `--sense-voice-model=<modelDir>/model.int8.onnx` + `--sense-voice-use-itn=1` + `--tokens=<modelDir>/tokens.txt`，实测后按真实模型结构调整
+- 模型登记表（`utils/sherpa-process.ts` 的 `SHERPA_MODELS`）：键为模型标识，条目含下拉展示名 `name`（模型专有名词，直接写字符串、不参与翻译）与该模型专属启动参数 `buildArgs`（每一项单独列出，不与其他模型共享数组）；`SherpaModelId` 由登记表键推导，`DEFAULT_SHERPA_MODEL_ID` 为默认项（`sense-voice-int8`），设置页「识别模型」下拉与 `SherpaServerConfig.modelType` 均出自此
+- 参数拼装（`buildSherpaArgs`）：`--port=` + `--num-threads=` + 所选模型条目的参数 + `--log-file=`；登记表现分三组且均经实测可用——SenseVoice（`--sense-voice-model` + `--sense-voice-use-itn=1` + `--tokens`，int8/全精度）、FunASR（`--funasr-nano-encoder-adaptor`/`-llm`/`-embedding`/`-tokenizer`，int8/fp16/fp32）、Paraformer（`--paraformer` + `--tokens`，int8/全精度）；新增模型只需在登记表追加条目，README 的「支持的模型」表格同步列出所需文件与特点
 
 ### sherpa-client（识别客户端）
 
@@ -191,7 +193,7 @@
 - `audio.ts`：识别管线纯函数与常量——`TARGET_SAMPLE_RATE`(16k)/`WS_CHUNK_BYTES`(10240)/`CAPTURE_BUFFER_SIZE`(4096)，`downsampleFloat32Mono`（线性重采样）、`float32ToInt16Pcm`、`int16ToFloat32Normalized`、`mergeInt16Chunks`（合并分片）、`buildOfflineWsPayload`（组装 8 字节头 + float32 LE 请求体）
 - `cm-utils.ts`：`getCodeMirrorEditorView(editor)` 鸭子类型取 CM6 `EditorView`；`@codemirror/view` 外部化，仅 `import type` 零运行时成本，运行时逐层校验 `cm`/`dispatch`/`state`/`selection`/`main`/`from`/`to` 形态，不符返回 `null`
 - `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "consecutive" }`（无声调、ü→v、非汉字连续段原样保留），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
-- `sherpa-process.ts`：纯函数（参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
+- `sherpa-process.ts`：纯函数与模型登记表（`SHERPA_MODELS` 各条目逐项列出模型专属参数，`SherpaModelId` 由键推导、`DEFAULT_SHERPA_MODEL_ID` 兜底；参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
 - `.svelte` 组件文件属于模块特有文件，置于所属模块目录下（如 `cores/sidebar/components/`），不受三段式约束
 
 ## 代码规范

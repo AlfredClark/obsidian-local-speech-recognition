@@ -14,18 +14,66 @@
 - 词库（针对中文设计）：经编辑器右键菜单添加词语；识别后命中的词语会加下划线，点击可替换为同音词。可选的模糊音匹配容忍平翘舌与前后鼻音差异。
 - 侧边栏视图（Ribbon 图标）：「词库管理」页管理词条，「服务管理」页控制服务。
 - 服务管理：手动启动/停止/重启、随插件自动启动、连接测试。
+- 可选的识别模型：SenseVoice、FunASR、Paraformer 三大家族，含 int8/fp16/fp32 多种精度，各自按专属参数启动（见[支持的模型](#支持的模型)）。
 - 三语界面：English / 简体中文 / 繁體中文，跟随 Obsidian 界面语言，也可手动指定。
 
 ## 运行要求
 
 - Obsidian 1.13.1 及以上（使用了声明式设置 API）。
 - 仅桌面端。插件需要拉起本地子进程并采集麦克风音频，移动端均不可用。
-- 需要 `sherpa-onnx-offline-websocket-server` 可执行文件与模型文件夹。当前仅支持 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` 模型的 int8 版本：文件夹内须包含 `model.int8.onnx` 与 `tokens.txt`，其他模型需要等待后续版本适配。
+- 需要 `sherpa-onnx-offline-websocket-server` 可执行文件（见[服务端选择](#服务端选择)）与模型文件夹（见[支持的模型](#支持的模型)）。
 
 ## 下载地址
 
 - sherpa-onnx 发布页（服务端可执行文件）：<https://github.com/k2-fsa/sherpa-onnx/releases>
 - 预训练 ASR 模型：<https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models>
+
+### 服务端选择
+
+sherpa-onnx 每次发布都会为桌面平台提供多个预编译包。按操作系统与 CPU 架构选择对应压缩包，解压后在**设置 → 服务设置 → 服务端可执行文件路径**中填入其 `bin/` 目录内的可执行文件：
+
+- macOS / Linux：`<解压目录>/bin/sherpa-onnx-offline-websocket-server`
+- Windows：`<解压目录>/bin/sherpa-onnx-offline-websocket-server.exe`
+
+| 平台                | 下载的压缩包                                              |
+| ------------------- | --------------------------------------------------------- |
+| macOS（Apple 芯片） | `sherpa-onnx-v<版本>-osx-arm64-static.tar.bz2`            |
+| macOS（Intel）      | `sherpa-onnx-v<版本>-osx-x64-static.tar.bz2`              |
+| macOS（通用）       | `sherpa-onnx-v<版本>-osx-universal2-static.tar.bz2`       |
+| Linux（x86_64）     | `sherpa-onnx-v<版本>-linux-x64-static.tar.bz2`            |
+| Linux（ARM64）      | `sherpa-onnx-v<版本>-linux-aarch64-static.tar.bz2`        |
+| Windows（x64）      | `sherpa-onnx-v<版本>-win-x64-static-MD-Release.tar.bz2`   |
+| Windows（ARM64）    | `sherpa-onnx-v<版本>-win-arm64-static-MD-Release.tar.bz2` |
+| Windows（32 位）    | `sherpa-onnx-v<版本>-win-x86-static-MD-Release.tar.bz2`   |
+
+说明：
+
+- 若 Linux 上是通过包管理工具（pacman、yay 等）安装的，可用 `whereis sherpa-onnx-offline-websocket-server` 获取安装后的可执行文件位置并填入。
+- 优先选 `-static` 包：可执行文件自包含。`-shared` 包还需把包内 `lib/` 目录加入库搜索路径（Windows 为 `PATH`，Linux 为 `LD_LIBRARY_PATH`，macOS 为 `DYLD_LIBRARY_PATH`）。
+- 有 `-no-tts` 后缀的包（如 `...-linux-x64-static-no-tts.tar.bz2`）体积小得多：插件只做语音识别，用不到 TTS。
+- 经浏览器下载后，macOS 可能因隔离标记拒绝运行未签名的可执行文件，可执行 `xattr -dr com.apple.quarantine <解压目录>` 解除。
+
+### 支持的模型
+
+在**设置 → 服务设置 → 识别模型**中选择模型，并把**模型文件夹路径**指向解压出的文件夹。文件夹内须包含下表所列的文件，`test_wavs/` 等多余文件不影响使用。切换模型在下次服务启动时生效。
+
+| 识别模型          | 模型目录需包含                                                                            | 特点                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| SenseVoice (int8) | `model.int8.onnx`、`tokens.txt`                                                           | 默认模型。支持普通话、粤语、英语、日语、韩语，ITN 带来标点；体积小（约 230 MB）、速度快                                           |
+| SenseVoice        | `model.onnx`、`tokens.txt`                                                                | 同一模型的全精度版本（约 890 MB），精度略高，体积更大、速度更慢                                                                   |
+| FunASR (int8)     | `encoder_adaptor.int8.onnx`、`llm.int8.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | 以 Qwen3-0.6B 作解码器，识别精度最高；支持普通话（含 7 种方言、26 种口音）、英语、日语，也能识别歌词；体积大（约 950 MB）、速度慢 |
+| FunASR (fp16)     | `encoder_adaptor.int8.onnx`、`llm.fp16.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | FunASR 的 fp16 版本（约 1.5 GB），精度与体积介于 int8 与 fp32 之间                                                                |
+| FunASR (fp32)     | `encoder_adaptor.onnx`、`llm.fp32.onnx`、`llm.fp32.data`、`embedding.onnx`、`Qwen3-0.6B/` | FunASR 全精度版本（约 3.7 GB），最重；`llm.fp32.data` 必须与 `llm.fp32.onnx` 放在同一目录                                         |
+| Paraformer (int8) | `model.int8.onnx`、`tokens.txt`                                                           | 非自回归，速度最快（约 220 MB）；中文（部分版本含英文或粤语），输出无标点                                                         |
+| Paraformer        | `model.onnx`、`tokens.txt`                                                                | Paraformer 全精度版本（约 790 MB），该系列中体积最大                                                                              |
+
+`Qwen3-0.6B/` 是分词器文件夹而非单个文件。与上表对应的压缩包（均在 ASR models 发布页）：
+
+- **SenseVoice**：`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`（同时含 `model.onnx` 与 `model.int8.onnx`），或 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17`（仅 int8）。
+- **FunASR**：`sherpa-onnx-funasr-nano-int8-2025-12-30`、`sherpa-onnx-funasr-nano-fp16-2025-12-30`，fp32 为 `sherpa-onnx-funasr-nano-2025-12-30`。
+- **Paraformer**：`sherpa-onnx-paraformer-zh-2024-03-09` 等同系列压缩包——`-zh-small-2024-03-09` 最小，`-trilingual-zh-cantonese-en` 支持粤语，`-zh-int8-2025-10-07` 面向川渝方言；其中 small 与川渝版本仅提供 `model.int8.onnx`，请搭配「Paraformer (int8)」使用。
+
+> 注意：同一架构的模型若文件名不同，理论上可通过修改文件名强行运行，但该做法不保证成功。
 
 ## 安装
 
@@ -52,15 +100,16 @@
 
 服务设置：
 
-| 设置                 | 说明                                                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 服务端可执行文件路径 | `sherpa-onnx-offline-websocket-server` 可执行文件路径                                                            |
-| 模型文件夹路径       | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` 的 `model.int8.onnx` + `tokens.txt`（暂仅支持该 int8 版本） |
-| 监听主机 / 服务端口  | 服务监听地址（默认 `127.0.0.1` / `6006`）                                                                        |
-| CPU 线程数           | 服务神经网络使用的线程数                                                                                         |
-| 连接测试             | 拨号已配置的 WebSocket 地址检查可达性                                                                            |
-| 自动启动服务         | 插件加载时自动拉起服务                                                                                           |
-| 启动/关闭/重启       | 手动生命周期控制，按服务状态显隐                                                                                 |
+| 设置                 | 说明                                                            |
+| -------------------- | --------------------------------------------------------------- |
+| 服务端可执行文件路径 | `sherpa-onnx-offline-websocket-server` 可执行文件路径           |
+| 模型文件夹路径       | 存放所选识别模型所需文件的文件夹（见[支持的模型](#支持的模型)） |
+| 识别模型             | 服务启动时加载的模型，下次启动生效                              |
+| 监听主机 / 监听端口  | 服务监听地址（默认 `127.0.0.1` / `6006`）                       |
+| CPU 线程数           | 服务神经网络使用的线程数                                        |
+| 连接测试             | 拨号已配置的 WebSocket 地址检查可达性                           |
+| 自动启动服务         | 插件加载时自动拉起服务                                          |
+| 启动/关闭/重启       | 手动生命周期控制，按服务状态显隐                                |
 
 语音输入：
 
