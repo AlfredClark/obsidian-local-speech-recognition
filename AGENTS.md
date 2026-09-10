@@ -45,7 +45,7 @@
 │   │   ├── audio-capture/   # 采集：麦克风枚举 + AudioWorklet 采集（worklet 源码内联）
 │   │   ├── i18n/            # 国际化模块：手动实现的多语言支持
 │   │   │   └── locales/     # 语言资源目录（文件说明见核心能力）
-│   │   ├── lexicon/         # 词库：IndexedDB 持久化 + 词条增删改查 + 导入导出格式（见核心能力）
+│   │   ├── lexicon/         # 词库：IndexedDB 持久化 + 词条增删改查 + 导入导出格式 + 模糊音变体（见核心能力）
 │   │   ├── settings/        # 设置模块：持久化设置 + 声明式设置页
 │   │   ├── sherpa-client/   # 识别客户端：offline-websocket 单次整句识别
 │   │   ├── sherpa-server/   # 服务管理：sherpa-onnx 子进程生命周期（状态见核心能力）
@@ -96,15 +96,15 @@
 
 ### settings（设置）
 
-- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底
-- 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()` 广播，语言切换与词库开关等联动即时生效；`subscribeLexiconEnabledChange`（同 `subscribeLanguageChange` 模式）供词库 feature 与侧边栏订阅
+- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底
+- 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
 - 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给 `service-actions.ts`/`lexicon-actions.ts` 的私有函数（`startService`/`stopService`/`restartService`/`testConnection`/`openSettings`/`exportLexicon`/`importLexicon`/`clearLexicon`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用；破坏性按钮经 `ButtonComponent.setDestructive()`（`setWarning()` 已废弃）
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 并经 `plugin.register` 托管退订；配置变更仅手动生效，不自动重启
 - 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示
 - 连接测试：`connection.ts` 的 `openWebSocket(url)` 拨号即判活（5 秒超时），不消费消息
-- 词库启用开关：`getLexiconItems` 首位为 `lexiconEnabled` 开关（持久化，默认 `true`，关闭时停用全部词库界面与编辑器集成），导出/导入/清空三行经 `visible: () => plugin.settings.lexiconEnabled` 随开关隐藏；开关切换经 `notifyLexiconEnabledChange()` 广播
+- 词库启用开关：`getLexiconItems` 首位为 `lexiconEnabled` 开关（持久化，默认 `true`，关闭时停用全部词库界面与编辑器集成），其后为 `fuzzyMatchEnabled` 模糊音开关（持久化，默认 `false`），导出/导入/清空三行经 `visible: () => plugin.settings.lexiconEnabled` 随开关隐藏，模糊音开关同样随词库关闭隐藏；开关切换分别经 `notifyLexiconEnabledChange()`/`notifyFuzzyMatchChange()` 广播
 - 词库管理动作：`lexicon-actions.ts` 提供导出（`serializeLexiconFile` → Blob + 临时 `<a download>` 触发系统保存对话框，文件名为本地时间戳）、导入（隐藏 `<input type="file">` 选文件，按扩展名/首字符分流 JSON 与纯文本，与库内词条按 word+pinyin 严格去重保留已有、文件内重复保留首条，Notice 汇总新增/跳过/无效条数）与清空（`Modal` + `ButtonComponent.setDestructive()` 二次确认不可恢复，确认后 `clearLexiconEntries` 并提示删除条数）；空词库执行导出/清空前经 Notice 提示并中止；文件选择与下载锚点须挂在 `activeDocument`（设置窗口可能运行在弹出窗口，全局 `document` 不持有该窗口的用户激活，文件选择框会被 Chromium 拒绝）
 - 依赖 i18n 模块：界面文案经 `t()` 翻译，`PluginLanguage` 类型自 `../i18n` 导入（依赖方向 settings → i18n，无环）
 - 跨层例外：声明式设置 API 迫使按钮/下拉与行定义同处一 Tab，`settings` 允许经 `service-actions.ts`/`microphone-options.ts`/`lexicon-actions.ts` 三个特有文件单向调用 `sherpa-server`（启停/状态/配置组装）、`audio-capture`（设备枚举）与 `lexicon`（导入导出清空），`cores.ts` 本体不直连进程、硬件与词库存储；方向仍为 settings → i18n 为主，此为例外且仅限这三个文件
@@ -150,7 +150,8 @@
 - 词库经 `window.indexedDB` 持久化（`window.indexedDB` 为纯浏览器 API，无 Node 依赖）：数据库名 `local-speech-recognition`、对象仓库 `lexicon`（`keyPath: "id"` + `autoIncrement`），条目字段 `id/word/pinyin/weight/enable`；字段增删不改变仓库结构，仅仓库形态变化才提升 `LEXICON_DB_VERSION`
 - 单例型模块（无 init），导出无状态 Promise API：`listLexiconEntries`（`getAll` 归一化后按 id 降序）、`findLexiconEntry`（按 word+pinyin 严格一致查找，`excludeId` 供编辑时排除自身，未命中返回 null；多音字可并存）、`addLexiconEntry`（`add` 取自增 id 并回填）、`addLexiconEntries`（批量新增，单事务，返回新增条数）、`updateLexiconEntry`（`put` 全量覆盖）、`deleteLexiconEntry`（单条）、`deleteLexiconEntries`（批量删除，单事务提交避免多次往返）、`updateLexiconEntries`（批量更新，单事务提交；词库页批量启用/禁用经此落库）、`clearLexiconEntries`（单事务 count+clear，返回删除条数）；另有 `subscribeLexiconChange(listener)` 变更订阅（返回退订函数）：各写操作在事务提交成功后广播，供 UI（如侧边栏词库页）重新读取列表，保证右键菜单与词库页等多入口写入后视图一致；由 sidebar 词库页、lexicon feature 与 settings 的 `lexicon-actions.ts` 按需调用
 - 启用词条映射：`getEnabledPinyinMap()` 返回 `ReadonlyMap<string, readonly string[]>`（key 为拼音去空白并小写，value 为词语列表按权重降序、同权重按 id 降序，数组内词语去重）；`refreshEnabledPinyinMap()` 重建映射，仅收录启用条目、key 为空则跳过，读取失败静默保留旧值（消费方降级不打断主流程），带代际号防并发旧读覆盖；映射为模块级单例且原地 clear+set，调用方持有的引用持续有效，由 `initLexicon` 启动预热、`notifyLexiconChange` 在每次写入广播时自动重建
-- 运行时开关：模块级 `lexiconEnabled`（默认 true）经 `setLexiconEnabled(enabled)`（关闭时清空映射并递增代际号作废在途重建，开启时重建映射）与 `isLexiconEnabled()` 读写；`refreshEnabledPinyinMap()` 在关闭时直接返回，使写入触发的重建同样被拦截；`findTargets` 据此短路，关闭后识别后处理不产生候选
+- 运行时开关：模块级 `lexiconEnabled`（默认 true）经 `setLexiconEnabled(enabled)`（关闭时清空精确与模糊两张映射并递增代际号作废在途重建，开启时重建映射）与 `isLexiconEnabled()` 读写；`refreshEnabledPinyinMap()` 在关闭时直接返回，使写入触发的重建同样被拦截；`findTargets` 据此短路，关闭后识别后处理不产生候选
+- 模糊音匹配：`fuzzy.ts`（模块特有文件）把词条拼音按易混规则展开为变体——声母组（平翘舌 `zh/z`、`ch/c`、`sh/s`）与韵母组（前后鼻音 `ang/an`、`eng/en`、`ing/in`、`iang/ian`、`uang/uan`，后两组需单列——拆出的韵母是 `ian`/`iang`/`uan`/`uang` 整体形式，不被 `ang/an` 组命中）各自归组后做笛卡尔组合，如 `zhang → [zhang, zhan, zang, zan]`；`buildVariantKeys(pinyin, expectedSyllables)` 依赖 `entry.pinyin` 的空格分音节（音节数与汉字数不符时返回空数组，手动录入无空格拼音自动退化为精确匹配），按词条设 `MAX_FUZZY_VARIANTS`(32) 上限防长词组合爆炸；模块级 `fuzzyMatchEnabled`（默认 false）经 `setFuzzyMatchEnabled(enabled)`（值未变直接返回，变化后重建映射）与 `isFuzzyMatchEnabled()` 读写，`getEnabledFuzzyPinyinMap()` 暴露 `ReadonlyMap`（关闭时为空表，`refreshEnabledPinyinMap` 顺带清空）
 - `file-format.ts`：导入导出文本格式（模块特有文件）。`serializeLexiconFile(entries)` 输出 `{ version, exportedAt, entries: [{ word, pinyin, weight, enable }] }`（不含 id，导入时重新分配自增 id）；`parseLexiconJson(text)` 兼容包装对象与裸条目数组，逐条归一化——word 缺失/非字符串丢弃计 invalid，`pinyin` 缺失用 `toPinyin` 生成，`weight` 非数字回退 0，`enable` 非布尔回退 true，结构不符抛错；`parseLexiconTxt(text)` 每行一个词语（空行跳过），行尾 `:\d+` 为整数权重（未带后缀回退 0），拼音一律自动生成
 - 连接懒打开并缓存为模块级 Promise；open 失败/被阻塞时复位缓存供下次重试；`onversionchange` 主动关闭连接并作废缓存，避免旧连接阻塞未来版本升级
 - 事务封装 `runTransaction`：先挂 complete/error 监听再发起请求（事务提交可能早于 await 恢复，晚挂监听会永久挂起），再经 `Promise.all` 同时等待请求结果与事务提交；读取结果经 `normalizeLexiconEntry` 运行时归一化——id/word/pinyin 类型不符的脏数据丢弃，`weight` 缺失回退 0、`enable` 缺失回退 true（兼容旧记录）
@@ -175,10 +176,10 @@
 
 ### lexicon（词库）
 
-- `initLexicon`：创建 `LexiconIntegration` 控制器并订阅 `subscribeLexiconEnabledChange`，按 `plugin.settings.lexiconEnabled` 首次 `apply()`（含映射预热），返回 `unsubscribe + dispose` 供 `cleanFeatures` 回收；控制器启停编辑器集成——启用时预热映射、注册 `workspace.on("editor-menu")`（选中非空时追加"添加到词库"项，图标 `book-plus`）并向扩展数组补入 `targetField` + `targetClickHandler`，关闭时移除扩展、`offref` 注销菜单并清空映射；`registerEditorExtension` 只注册一次空数组，靠增删数组 + `workspace.updateOptions()` 运行时生效（Obsidian 无注销 API，此为官方指定的热配置方式）
+- `initLexicon`：创建 `LexiconIntegration` 控制器并订阅 `subscribeLexiconEnabledChange`，按 `plugin.settings.lexiconEnabled` 首次 `apply()`（含映射预热），随后订阅 `subscribeFuzzyMatchChange` 并 `setFuzzyMatchEnabled(plugin.settings.fuzzyMatchEnabled)`（先 apply 再设模糊，避免启动时重建两次），返回 `unsubscribe + dispose` 供 `cleanFeatures` 回收；控制器启停编辑器集成——启用时预热映射、注册 `workspace.on("editor-menu")`（选中非空时追加"添加到词库"项，图标 `book-plus`）并向扩展数组补入 `targetField` + `targetClickHandler`，关闭时移除扩展、`offref` 注销菜单并清空映射；`registerEditorExtension` 只注册一次空数组，靠增删数组 + `workspace.updateOptions()` 运行时生效（Obsidian 无注销 API，此为官方指定的热配置方式）
 - 添加语义：拼音经 `toPinyin` 自动生成、权重 0、默认启用；写入前经 `findLexiconEntry` 按 word+pinyin 严格一致查重，已存在则 `Notice` 提示且不写入；成功与失败分别经 `lexicon.added`/`lexicon.addFailed` 提示；写入经词库 core 广播变更，已打开的侧边栏词库页静默刷新实时反映
-- 识别后处理：`findTargets(text, baseFrom)` 以 `getEnabledPinyinMap()` 的键为匹配目标，逐键经 pinyin-pro `match`（`every` + `lastPrecision: every` + `continuous` + `v`，整词严格同音）扫描本次识别插入的文本，过滤非纯汉字片段（`match` 会把拉丁字符逐字母当拼音），跳过无替代项片段（该拼音唯一候选且与文本一致），同片段多音合并 keys，重叠片段按起点升序贪心保留（RangeSet 要求互不重叠）；结果经 `setTargetsEffect` 由 `targetField` 渲染 `.target-word` 装饰（`data-keys` 存拼音键）
-- 点击替换：`EditorView.domEventHandlers` 的 click 处理器（编辑器视图直接可得、弹出窗口同样生效）打开 `Menu`，候选取自 keys 对应最新映射并排除当前文本，空则不弹；选中后单事务替换并携带 `dismissTargetEffect`（旧坐标）只清除该处高亮，其余装饰随变更自动映射；样式为 `--text-accent` 点状下划线 + 指针（styles.css）
+- 识别后处理：`findTargets(text, baseFrom)` 以 `getEnabledPinyinMap()` 的键为匹配目标（`isFuzzyMatchEnabled()` 为真时并入 `getEnabledFuzzyPinyinMap()`，使平翘舌与前后鼻音差异的识别结果也能命中），逐键经 pinyin-pro `match`（`every` + `lastPrecision: every` + `continuous` + `v`，整词严格同音）扫描本次识别插入的文本，过滤非纯汉字片段（`match` 会把拉丁字符逐字母当拼音），跳过无替代项片段（该拼音唯一候选且与文本一致），同片段多音合并 keys，重叠片段按起点升序贪心保留（RangeSet 要求互不重叠）；结果经 `setTargetsEffect` 由 `targetField` 渲染 `.target-word` 装饰（`data-keys` 存拼音键）
+- 点击替换：`EditorView.domEventHandlers` 的 click 处理器（编辑器视图直接可得、弹出窗口同样生效）打开 `Menu`，候选取自 keys 对应的最新精确与模糊两张映射（data-keys 不区分来源）并排除当前文本，空则不弹；选中后单事务替换并携带 `dismissTargetEffect`（旧坐标）只清除该处高亮，其余装饰随变更自动映射；样式为 `--text-accent` 点状下划线 + 指针（styles.css）
 
 ## utils（工具）
 

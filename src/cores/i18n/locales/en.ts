@@ -65,6 +65,9 @@ const en = {
     lexiconDesc: "Turn the lexicon on or off, and back up, restore, or clear its entries",
     lexiconEnable: "Enable lexicon",
     lexiconEnableDesc: "Use the lexicon for right-click additions and recognition result enhancement",
+    fuzzyMatch: "Fuzzy pinyin matching",
+    fuzzyMatchDesc:
+      "Also match words differing only in retroflex initials (zh/z, ch/c, sh/s) or front/back nasals (an/ang, en/eng, in/ing, ian/iang, uan/uang)",
     lexiconExport: "Export lexicon",
     lexiconExportDesc: "Save all lexicon entries to a JSON file",
     lexiconImport: "Import lexicon",

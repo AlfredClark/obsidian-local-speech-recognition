@@ -21,10 +21,14 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   inputMode: "toggle",
   microphoneDeviceId: "",
   lexiconEnabled: true,
+  fuzzyMatchEnabled: false,
 };
 
 /** 词库开关变更订阅回调集合；设置页写入后广播，词库 feature 与侧边栏据此启停 */
 const lexiconEnabledListeners = new Set<(enabled: boolean) => void>();
+
+/** 模糊音匹配开关变更订阅回调集合；设置页写入后广播，词库 feature 据此重建映射 */
+const fuzzyMatchListeners = new Set<(enabled: boolean) => void>();
 
 /**
  * 订阅词库开关变更。开关键仅在设置页被切换（settings 层写入后广播），
@@ -42,6 +46,24 @@ export function subscribeLexiconEnabledChange(listener: (enabled: boolean) => vo
 /** 广播词库开关变更。由 settings 模块在 lexiconEnabled 写入后调用 */
 function notifyLexiconEnabledChange(enabled: boolean): void {
   lexiconEnabledListeners.forEach((listener) => listener(enabled));
+}
+
+/**
+ * 订阅模糊音匹配开关变更。开关仅在设置页被切换（settings 层写入后广播），
+ * 订阅方据此重建模糊映射。
+ * @param listener 开关变更回调，参数为最新启用状态
+ * @returns 取消订阅函数
+ */
+export function subscribeFuzzyMatchChange(listener: (enabled: boolean) => void): () => void {
+  fuzzyMatchListeners.add(listener);
+  return () => {
+    fuzzyMatchListeners.delete(listener);
+  };
+}
+
+/** 广播模糊音匹配开关变更。由 settings 模块在 fuzzyMatchEnabled 写入后调用 */
+function notifyFuzzyMatchChange(enabled: boolean): void {
+  fuzzyMatchListeners.forEach((listener) => listener(enabled));
 }
 
 /**
@@ -137,6 +159,10 @@ export class SettingsTab extends PluginSettingTab {
     // 词库开关广播：编辑器集成与侧边栏词库页靠订阅动态启停
     if (key === "lexiconEnabled") {
       notifyLexiconEnabledChange(value === true);
+    }
+    // 模糊音开关广播：词库 feature 靠订阅重建模糊映射
+    if (key === "fuzzyMatchEnabled") {
+      notifyFuzzyMatchChange(value === true);
     }
     void this.update();
   }
@@ -330,6 +356,17 @@ export class SettingsTab extends PluginSettingTab {
           type: "toggle",
           key: "lexiconEnabled",
           defaultValue: true,
+        },
+      },
+      {
+        name: t("settings.fuzzyMatch"),
+        desc: t("settings.fuzzyMatchDesc"),
+        // 词库关闭时不显示：该开关仅影响识别后处理，无词库时无意义
+        visible: () => this.plugin.settings.lexiconEnabled,
+        control: {
+          type: "toggle",
+          key: "fuzzyMatchEnabled",
+          defaultValue: false,
         },
       },
       {

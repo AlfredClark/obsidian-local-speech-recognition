@@ -30,4 +30,6 @@ export interface LocalSpeechRecognitionPluginSettings {
   microphoneDeviceId: string;
   /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
   lexiconEnabled: boolean;
+  /** 是否启用模糊音匹配：开启后平翘舌与前后鼻音的差异也视为命中，关闭时仅精确同音 */
+  fuzzyMatchEnabled: boolean;
 }

@@ -67,6 +67,9 @@ export const zh: TranslationResource = {
     lexiconDesc: "开启或关闭词库，并备份、恢复或清空词条",
     lexiconEnable: "启用词库",
     lexiconEnableDesc: "启用右键添加到词库与识别结果词库增强",
+    fuzzyMatch: "模糊音匹配",
+    fuzzyMatchDesc:
+      "同时匹配仅在平翘舌（zh/z、ch/c、sh/s）或前后鼻音（an/ang、en/eng、in/ing、ian/iang、uan/uang）上有差异的词语",
     lexiconExport: "导出词库",
     lexiconExportDesc: "将全部词条保存为 JSON 文件",
     lexiconImport: "导入词库",
@@ -231,6 +234,9 @@ export const zhTW: TranslationResource = {
     lexiconDesc: "開啟或關閉詞庫，並備份、還原或清空詞條",
     lexiconEnable: "啟用詞庫",
     lexiconEnableDesc: "啟用右鍵加入詞庫與辨識結果詞庫增強",
+    fuzzyMatch: "模糊音比對",
+    fuzzyMatchDesc:
+      "同時比對僅在平翹舌（zh/z、ch/c、sh/s）或前後鼻音（an/ang、en/eng、in/ing、ian/iang、uan/uang）上有差異的詞語",
     lexiconExport: "匯出詞庫",
     lexiconExportDesc: "將全部詞條儲存為 JSON 檔案",
     lexiconImport: "匯入詞庫",

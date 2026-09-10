@@ -3,11 +3,14 @@ import { match } from "pinyin-pro";
 import {
   addLexiconEntry,
   findLexiconEntry,
+  getEnabledFuzzyPinyinMap,
   getEnabledPinyinMap,
+  isFuzzyMatchEnabled,
   isLexiconEnabled,
+  setFuzzyMatchEnabled,
   setLexiconEnabled,
 } from "../../cores/lexicon";
-import { subscribeLexiconEnabledChange } from "../../cores/settings";
+import { subscribeFuzzyMatchChange, subscribeLexiconEnabledChange } from "../../cores/settings";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -27,7 +30,8 @@ const HAN_ONLY = /^\p{Script=Han}+$/u;
 /**
  * 初始化词库功能：按「启用词库」开关动态挂载编辑器集成——
  * 右键菜单"添加到词库"与识别后处理扩展（高亮 + 点击替换），并预热启用词条拼音映射。
- * 订阅设置广播，开关切换时即时注册/注销，关闭后不残留监听与扩展。
+ * 订阅设置广播，开关切换时即时注册/注销，关闭后不残留监听与扩展；
+ * 另同步「模糊音匹配」开关，控制模糊映射的构建与使用。
  * 返回同步清理函数：退订广播并整体停用，由 cleanFeatures 卸载时回收。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
  * @returns 卸载时停用集成并退订的清理函数
@@ -35,9 +39,13 @@ const HAN_ONLY = /^\p{Script=Han}+$/u;
 export async function initLexicon(plugin: LocalSpeechRecognitionPlugin): Promise<() => void> {
   const integration = new LexiconIntegration(plugin);
   const unsubscribe = subscribeLexiconEnabledChange((enabled) => void integration.apply(enabled));
+  const unsubscribeFuzzy = subscribeFuzzyMatchChange((enabled) => void setFuzzyMatchEnabled(enabled));
   await integration.apply(plugin.settings.lexiconEnabled);
+  // 先应用词库开关再设模糊：避免启动时映射重建两次
+  await setFuzzyMatchEnabled(plugin.settings.fuzzyMatchEnabled);
   return () => {
     unsubscribe();
+    unsubscribeFuzzy();
     integration.dispose();
   };
 }
@@ -210,11 +218,14 @@ function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void 
   const from = view.posAtDOM(el);
   const to = view.posAtDOM(el, el.childNodes.length);
   const current = view.state.sliceDoc(from, to);
-  const map = getEnabledPinyinMap();
+  // key 可能来自精确映射或模糊映射（data-keys 不区分来源），两张表都查并合并候选
+  const maps = [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()];
   const candidates: string[] = [];
   for (const key of keys) {
-    for (const word of map.get(key) ?? []) {
-      if (word !== current && !candidates.includes(word)) candidates.push(word);
+    for (const map of maps) {
+      for (const word of map.get(key) ?? []) {
+        if (word !== current && !candidates.includes(word)) candidates.push(word);
+      }
     }
   }
   if (candidates.length === 0) return;
@@ -239,6 +250,7 @@ function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void 
  * 扫描文本中与启用词条拼音键同音的片段：逐键经 pinyin-pro match 查找，过滤非纯汉字片段，
  * 跳过无替代项的片段（唯一候选与文本一致），同片段多音合并 keys，
  * 重叠片段按起点升序、同起点长者优先贪心保留（RangeSet 要求互不重叠）。
+ * 模糊音匹配开启时，额外以模糊变体映射扫描，使平翘舌与前后鼻音差异的识别结果也能命中。
  * @param text 待扫描文本（本次识别插入的内容）
  * @param baseFrom 文本在文档中的起始位置
  * @returns 高亮目标列表
@@ -246,30 +258,34 @@ function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void 
 export function findTargets(text: string, baseFrom: number): LexiconTarget[] {
   // 词库关闭时直接跳过扫描：映射已清空，此处短路同时避免无谓遍历
   if (!isLexiconEnabled()) return [];
-  const map = getEnabledPinyinMap();
+  // 模糊开启时并入模糊映射：同一片段可被两种映射命中，按坐标合并 keys
+  const maps: ReadonlyMap<string, readonly string[]>[] = [getEnabledPinyinMap()];
+  if (isFuzzyMatchEnabled()) maps.push(getEnabledFuzzyPinyinMap());
   const spans = new Map<string, { start: number; end: number; keys: Set<string> }>();
-  for (const [key, words] of map) {
-    let offset = 0;
-    while (offset < text.length) {
-      const indices = match(text.slice(offset), key, MATCH_OPTIONS);
-      if (indices === null || indices.length === 0) break;
-      const first = indices[0];
-      const last = indices[indices.length - 1];
-      if (first === undefined || last === undefined) break;
-      const start = offset + first;
-      const end = offset + last + 1;
-      offset = end;
-      const segment = text.slice(start, end);
-      if (!HAN_ONLY.test(segment)) continue;
-      // 无替代项：拼音成功匹配、词库中该拼音只有唯一候选、且候选与文本汉字完全一致时跳过，
-      // 此时点击也没有其他词可选，高亮只会在正确的识别结果上产生无意义标记
-      if (words.length === 1 && words[0] === segment) continue;
-      const id = `${start},${end}`;
-      const existing = spans.get(id);
-      if (existing === undefined) {
-        spans.set(id, { start, end, keys: new Set([key]) });
-      } else {
-        existing.keys.add(key);
+  for (const map of maps) {
+    for (const [key, words] of map) {
+      let offset = 0;
+      while (offset < text.length) {
+        const indices = match(text.slice(offset), key, MATCH_OPTIONS);
+        if (indices === null || indices.length === 0) break;
+        const first = indices[0];
+        const last = indices[indices.length - 1];
+        if (first === undefined || last === undefined) break;
+        const start = offset + first;
+        const end = offset + last + 1;
+        offset = end;
+        const segment = text.slice(start, end);
+        if (!HAN_ONLY.test(segment)) continue;
+        // 无替代项：拼音成功匹配、词库中该拼音只有唯一候选、且候选与文本汉字完全一致时跳过，
+        // 此时点击也没有其他词可选，高亮只会在正确的识别结果上产生无意义标记
+        if (words.length === 1 && words[0] === segment) continue;
+        const id = `${start},${end}`;
+        const existing = spans.get(id);
+        if (existing === undefined) {
+          spans.set(id, { start, end, keys: new Set([key]) });
+        } else {
+          existing.keys.add(key);
+        }
       }
     }
   }

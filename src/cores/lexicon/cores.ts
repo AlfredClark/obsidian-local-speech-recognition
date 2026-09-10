@@ -1,3 +1,4 @@
+import { buildVariantKeys } from "./fuzzy";
 import type { LexiconEntry, LexiconEntryInput } from "./types";
 
 /** 词库数据库名；与插件 id 一致，便于在浏览器存储中辨认归属 */
@@ -16,11 +17,17 @@ const changeListeners = new Set<() => void>();
 /** 启用词条的归一化拼音 → 词语列表；模块级单例，原地更新保证调用方持有的引用持续有效 */
 const enabledPinyinMap = new Map<string, string[]>();
 
+/** 启用词条的模糊变体 key → 词语列表；与精确映射同构，仅在模糊开关开启时填充 */
+const enabledFuzzyPinyinMap = new Map<string, string[]>();
+
 /** 映射重建代际号：并发重建时仅最后一次回包生效，防止旧读覆盖新数据 */
 let pinyinRefreshGeneration = 0;
 
 /** 词库功能总开关；关闭时映射清空，识别后处理不产生候选，读写词条不受影响 */
 let lexiconEnabled = true;
+
+/** 模糊音匹配开关；关闭时模糊映射为空，消费方按精确同音匹配 */
+let fuzzyMatchEnabled = false;
 
 /** 当前词库功能是否启用；供需要短路的高频路径（如识别后处理）判断 */
 export function isLexiconEnabled(): boolean {
@@ -37,8 +44,25 @@ export async function setLexiconEnabled(enabled: boolean): Promise<void> {
   if (!enabled) {
     pinyinRefreshGeneration += 1;
     enabledPinyinMap.clear();
+    enabledFuzzyPinyinMap.clear();
     return;
   }
+  await refreshEnabledPinyinMap();
+}
+
+/** 当前是否启用模糊音匹配；供识别后处理决定是否并入模糊映射 */
+export function isFuzzyMatchEnabled(): boolean {
+  return fuzzyMatchEnabled;
+}
+
+/**
+ * 设置模糊音匹配开关并重建映射；值未变化时直接返回，避免无谓重建。
+ * 由 features/lexicon 控制器在设置开关变化时调用。
+ * @param enabled 是否启用模糊音匹配
+ */
+export async function setFuzzyMatchEnabled(enabled: boolean): Promise<void> {
+  if (fuzzyMatchEnabled === enabled) return;
+  fuzzyMatchEnabled = enabled;
   await refreshEnabledPinyinMap();
 }
 
@@ -51,8 +75,17 @@ export function getEnabledPinyinMap(): ReadonlyMap<string, readonly string[]> {
 }
 
 /**
+ * 获取启用词条的模糊变体映射：key 为易混变体拼写，value 为词语列表（顺序同精确映射）。
+ * 返回只读视图且为同一实例；模糊开关关闭时为空表。
+ */
+export function getEnabledFuzzyPinyinMap(): ReadonlyMap<string, readonly string[]> {
+  return enabledFuzzyPinyinMap;
+}
+
+/**
  * 重建启用词条映射：仅收录启用条目，拼音去除全部空白并转小写后作键；
  * 同一拼音下词语按权重降序排列，同权重时 id 大者在前（稳定排序保留 listLexiconEntries 的 id 降序）。
+ * 模糊开关开启时同步重建模糊变体映射，关闭时清空。
  * 读取失败静默保留旧映射，消费方降级为无增强，不打断主流程。
  */
 export async function refreshEnabledPinyinMap(): Promise<void> {
@@ -74,10 +107,29 @@ export async function refreshEnabledPinyinMap(): Promise<void> {
         words.push(entry.word);
       }
     }
+    // 模糊变体：按词条拼音的音节展开易混拼写，供识别偏差（平翘舌、前后鼻音）也能命中
+    const nextFuzzy = new Map<string, string[]>();
+    if (fuzzyMatchEnabled) {
+      for (const entry of sorted) {
+        for (const key of buildVariantKeys(entry.pinyin, [...entry.word].length)) {
+          const words = nextFuzzy.get(key);
+          if (words === undefined) {
+            nextFuzzy.set(key, [entry.word]);
+          } else if (!words.includes(entry.word)) {
+            words.push(entry.word);
+          }
+        }
+      }
+    }
     // 原地替换：保持单例引用不变，已持有引用的调用方持续有效
     enabledPinyinMap.clear();
     for (const [key, words] of next) {
       enabledPinyinMap.set(key, words);
+    }
+    // 关闭时 nextFuzzy 为空表，顺带清空旧模糊键，无需单独分支
+    enabledFuzzyPinyinMap.clear();
+    for (const [key, words] of nextFuzzy) {
+      enabledFuzzyPinyinMap.set(key, words);
     }
   } catch {
     // 静默：保留上一次映射
