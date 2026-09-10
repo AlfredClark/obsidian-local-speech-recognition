@@ -267,7 +267,7 @@
   热重载时组件检测到同 id 样式已存在便跳过重注入，类名规则会停留在旧版本（重启 Obsidian 才更新），
   内联样式随最新 DOM 一起生成，开发期即时生效。
 -->
-<div class="novel-lexicon-toolbar" style="display: flex; align-items: center; gap: 6px;">
+<div class="lsr-lexicon-toolbar" style="display: flex; align-items: center; gap: 6px;">
   <input
     type="checkbox"
     bind:this={selectAllInput}
@@ -320,21 +320,21 @@
 {:else if filtered.length === 0}
   <p>{t("sidebar.lexiconNoMatch")}</p>
 {:else}
-  <div class="novel-lexicon-list" style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+  <div class="lsr-lexicon-list" style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
     {#each filtered as entry (entry.id)}
-      <div class="novel-lexicon-item" style="display: flex; align-items: center; gap: 6px; opacity: {entry.enable ? 1 : 0.55};">
+      <div class="lsr-lexicon-item" style="display: flex; align-items: center; gap: 6px; opacity: {entry.enable ? 1 : 0.55};">
         <input
           type="checkbox"
           checked={selectedIds.includes(entry.id)}
           aria-label={entry.word}
           onchange={(event) => toggleSelected(entry.id, event.currentTarget.checked)}
         />
-        <div class="novel-lexicon-info" style="flex: 1; min-width: 0; overflow-wrap: anywhere;">
-          <span class="novel-lexicon-word">{entry.word}</span>
-          <span class="novel-lexicon-pinyin" style="color: var(--text-muted);">[{entry.pinyin}]</span>
+        <div class="lsr-lexicon-info" style="flex: 1; min-width: 0; overflow-wrap: anywhere;">
+          <span class="lsr-lexicon-word">{entry.word}</span>
+          <span class="lsr-lexicon-pinyin" style="color: var(--text-muted);">[{entry.pinyin}]</span>
         </div>
-        <div class="novel-lexicon-actions" style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
-          <span class="novel-lexicon-weight" style="color: var(--text-muted);">({entry.weight})</span>
+        <div class="lsr-lexicon-actions" style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+          <span class="lsr-lexicon-weight" style="color: var(--text-muted);">({entry.weight})</span>
           {#if pendingDeleteId === entry.id}
             <button type="button" onclick={() => void confirmDelete(entry.id)}>
               {t("sidebar.lexiconConfirmDelete")}

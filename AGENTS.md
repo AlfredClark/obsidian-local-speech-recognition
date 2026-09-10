@@ -113,11 +113,11 @@
 ### sidebar（侧边栏）
 
 - `SidebarView`（`cores.ts`，extends `ItemView`）只负责挂载/回收 Svelte 根组件：`onOpen` 经 `mountComponent(this.contentEl, SidebarRoot, { plugin })` 挂载，`onClose` 调 `mounted.destroy()`；视图内容全部由组件渲染
-- 视图标识 `SIDEBAR_VIEW_TYPE = "novelists-assistant-sidebar"`，图标 `mic-vocal`，标题常量 `PLUGIN_NAME` 与 manifest 的 name 一致
+- 视图标识 `SIDEBAR_VIEW_TYPE = "local-speech-recognition-sidebar"`，图标 `mic-vocal`，标题常量 `PLUGIN_NAME` 与 manifest 的 name 一致
 - `activateSidebar`：已有叶子（`getLeavesOfType`）则 `revealLeaf` 直接激活，否则 `getRightLeaf(false)` 建叶子 + `setViewState({ type, active: true })` + `revealLeaf`；仅负责激活，不做关闭逻辑
 - `initSidebar`：`registerView` + `addRibbonIcon`，两者由 Obsidian 卸载时自动回收（与官方文档行为一致），无需手动清理
 - 页面模型：`SidebarPage = "lexicon" | "service"`；`SidebarRoot.svelte` 维护 `activePage` 与 `langTick`（`{#key langTick}` 重建），tab 配置表 `TABS`（`$derived`，词库 `lexiconEnabled` 关闭时仅保留服务页并在停留词库页时自动切页，初值经 `untrack` 取一次快照，订阅 `subscribeLexiconEnabledChange`）+ 内容区 `{#if}` 分支，新增页面需同时扩展联合类型、`TABS` 与分支；`LexiconPage.svelte` 为词库管理页（见 lexicon），挂载时经 `listLexiconEntries` 一次性加载，筛选结果按权重降序、同权重 id 降序渲染，并订阅 `subscribeLexiconChange` 作静默刷新（不切换加载态、失败保留旧数据，同时清理已不存在条目的勾选/待确认状态），使右键菜单添加等外部写入实时反映到列表；筛选状态下拉（全部/已启用/已禁用）与搜索框对 word/pinyin 纯前端过滤且叠加生效，加号与行内编辑经 `lexicon-entry-modal.ts` 的 `openLexiconEntryModal` 打开 Obsidian `Modal`（内嵌 `LexiconEntryForm.svelte`，新增/编辑复用、打开即聚焦词语输入、校验非空与经 `findLexiconEntry` 按 word+pinyin 严格一致查重（编辑排除自身，重复则 Notice 且不写入）、保存成功由表单回调关闭，新增隐藏启用复选框并固定 enable=true，编辑保留以便弹窗内调整，词语输入经 `toPinyin` 实时重算拼音且拼音框旁提供"重新生成拼音"按钮，手动改词后覆盖人工拼音），行内复选框为多选（搜索框左侧全选框带半选态，有勾选时加号右侧出现批量操作按钮，点击经 Obsidian `Menu.showAtMouseEvent` 弹出批量启用/批量禁用/批量删除（`setWarning`）三项），行内操作依次为启用开关（`setIcon` 图标按钮，编辑按钮左侧）、编辑与两步删除（确认/取消）；`ServicePage.svelte` 展示服务状态徽标与配置并复用 `settings/service-actions` 的启停/重启/连接测试/打开设置
-- 组件内样式经 `css: "injected"` 内联，class 前缀统一 `novel-`（如 `novel-sidebar`/`novel-service-badge`），配合编译期 class 哈希隔离
+- 组件内样式经 `css: "injected"` 内联，class 前缀统一 `lsr-`（如 `lsr-sidebar`/`lsr-service-badge`），配合编译期 class 哈希隔离
 - 热重载样式盲区：Svelte 注入的 `<style>` 以文件路径哈希为固定 id，热重载时组件发现同 id 样式已存在便跳过重注入，类名规则会停留在旧版本（重启 Obsidian 才更新）；布局关键规则改用内联 `style`（如 `LexiconPage` 工具栏与列表行），内联样式随最新 DOM 生成，开发期即时生效
 
 ### sherpa-server（服务管理）
@@ -204,7 +204,7 @@
 4. **注释**：中文，写"为什么"而非"是什么"；不做多余注释。导出声明（类/接口/函数/常量/属性）一律使用 JSDoc（`/** */`），内部逻辑用行注释；`@param`/`@returns` 仅在参数或返回值存在需要说明的语义时使用，不机械全量添加；纯 re-export 的 index.ts 无需注释
 5. **约束**：桌面 Node 能力（`child_process` 等）须 `Platform.isDesktop` 守卫后同步 `require()`（Obsidian 以 CJS 加载插件，原生动态 `import("node:...")` 会被当网络模块抓取而失败；`require` 处加带描述的 eslint-disable）；src 内禁止顶层 `node:` 导入（含 `import type`，用窄结构类型代替 Node 类型），对应 `obsidianmd/no-nodejs-modules` 规则；禁止 Electron API；`@codemirror/*` 已外部化，值导入仅限编辑器扩展实现所需的 `@codemirror/state`/`@codemirror/view`（与 Obsidian 共享同一模块实例），`cm-utils.ts` 等鸭子类型探测仍 `import type`；涉及用户激活的 DOM 操作（文件选择、下载锚点）一律使用 `activeDocument`/`activeWindow`——设置窗口可能运行在弹出窗口，全局 `document` 指向主窗口会丢失用户激活
 6. **依赖**：确认可 bundle 或需加入 esbuild `external` 列表；跨模块依赖方向为 utils ← cores ← features，例外为 `utils/sherpa-process.ts` 对 `cores/*/types` 的 type-only 回指与 settings 对进程/硬件的两个特有文件调用（见核心能力）
-7. **Svelte**：组件使用 runes（`$props`/`$state`/`$derived`/`$effect`），`$effect` 内订阅须返回退订函数；模板中的 `t()` 需外包 `{#key langTick}` 以支持语言切换重建；组件样式作用域内，class 前缀统一 `novel-`
+7. **Svelte**：组件使用 runes（`$props`/`$state`/`$derived`/`$effect`），`$effect` 内订阅须返回退订函数；模板中的 `t()` 需外包 `{#key langTick}` 以支持语言切换重建；组件样式作用域内，class 前缀统一 `lsr-`
 8. **格式**：由 `.prettierrc` 统一控制——2 空格缩进、双引号、128 列、LF 行尾（与 `.editorconfig` 一致）
 
 ## 提交规范（Conventional Commits，与 cliff.toml 对齐）

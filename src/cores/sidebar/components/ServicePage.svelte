@@ -58,12 +58,12 @@
   <div>
     <h4>{t("sidebar.serviceStatus")}</h4>
     <p>
-      <strong class="novel-service-badge" data-status={status}>{t(statusKey(status))}</strong>
+      <strong class="lsr-service-badge" data-status={status}>{t(statusKey(status))}</strong>
     </p>
     <h4>{t("sidebar.serviceBinary")}</h4>
-    <p class="novel-service-value">{displayPath(plugin.settings.binaryPath)}</p>
+    <p class="lsr-service-value">{displayPath(plugin.settings.binaryPath)}</p>
     <h4>{t("sidebar.serviceModel")}</h4>
-    <p class="novel-service-value">{displayPath(plugin.settings.modelPath)}</p>
+    <p class="lsr-service-value">{displayPath(plugin.settings.modelPath)}</p>
     <h4>{t("settings.modelType")}</h4>
     <p>{SHERPA_MODELS[plugin.settings.modelType].name}</p>
     <h4>{t("settings.host")}</h4>
@@ -75,7 +75,7 @@
     <h4>{t("sidebar.serviceAutoStart")}</h4>
     <p>{displayAutoStart(plugin.settings.autoStartServer)}</p>
     <h4>{t("sidebar.serviceAddress")}</h4>
-    <p class="novel-service-value">{address}</p>
+    <p class="lsr-service-value">{address}</p>
     <p>
       {#if status === "stopped" || status === "error"}
         <button type="button" disabled={busy} onclick={() => void startService(plugin)}>
@@ -101,19 +101,7 @@
 
 <style>
   /* 长路径不断行会撑破侧边栏，仅保留换行规则；行间距与字号字重全部交给 h4/p 原生边距 */
-  .novel-service-value {
+  .lsr-service-value {
     overflow-wrap: anywhere;
-  }
-
-  .novel-service-badge[data-status="running"] {
-    color: var(--text-success);
-  }
-
-  .novel-service-badge[data-status="starting"] {
-    color: var(--text-warning);
-  }
-
-  .novel-service-badge[data-status="error"] {
-    color: var(--text-error);
   }
 </style>

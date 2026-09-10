@@ -46,12 +46,12 @@
 </script>
 
 {#key langTick}
-  <div class="novel-sidebar">
-    <nav class="novel-sidebar-tabs">
+  <div class="lsr-sidebar">
+    <nav class="lsr-sidebar-tabs">
       {#each TABS as tab (tab.id)}
         <button
           type="button"
-          class="novel-sidebar-tab"
+          class="lsr-sidebar-tab"
           class:active={activePage === tab.id}
           onclick={() => (activePage = tab.id)}
         >
@@ -59,7 +59,7 @@
         </button>
       {/each}
     </nav>
-    <div class="novel-sidebar-content">
+    <div class="lsr-sidebar-content">
       {#if activePage === "lexicon" && lexiconEnabled}
         <LexiconPage {plugin} />
       {:else}
@@ -70,20 +70,20 @@
 {/key}
 
 <style>
-  .novel-sidebar {
+  .lsr-sidebar {
     display: flex;
     flex-direction: column;
     height: 100%;
   }
 
-  .novel-sidebar-tabs {
+  .lsr-sidebar-tabs {
     display: flex;
     gap: 4px;
     padding: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
   }
 
-  .novel-sidebar-tab {
+  .lsr-sidebar-tab {
     flex: 1;
     padding: 6px 8px;
     border: none;
@@ -94,16 +94,16 @@
     cursor: pointer;
   }
 
-  .novel-sidebar-tab:hover {
+  .lsr-sidebar-tab:hover {
     background: var(--background-modifier-hover);
   }
 
-  .novel-sidebar-tab.active {
+  .lsr-sidebar-tab.active {
     background: var(--background-modifier-active-hover);
     color: var(--text-normal);
   }
 
-  .novel-sidebar-content {
+  .lsr-sidebar-content {
     flex: 1;
     width: 100%;
     padding: 12px;

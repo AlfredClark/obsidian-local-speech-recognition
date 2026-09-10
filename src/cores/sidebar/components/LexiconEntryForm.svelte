@@ -82,7 +82,7 @@
 </script>
 
 <form
-  class="novel-lexicon-form"
+  class="lsr-lexicon-form"
   onsubmit={(event) => {
     event.preventDefault();
     void submit();
@@ -126,8 +126,8 @@
 
 <style>
   /* Obsidian 未给弹窗内裸输入框设定宽度，补一条撑满内容区，其余交给浏览器默认样式 */
-  .novel-lexicon-form input[type="text"],
-  .novel-lexicon-form input[type="number"] {
+  .lsr-lexicon-form input[type="text"],
+  .lsr-lexicon-form input[type="number"] {
     width: 100%;
   }
 </style>
