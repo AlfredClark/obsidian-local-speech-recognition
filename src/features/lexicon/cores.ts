@@ -2,9 +2,12 @@ import { type Editor, type EventRef, Menu, Notice } from "obsidian";
 import { match } from "pinyin-pro";
 import {
   addLexiconEntry,
+  addLexiconEntryToStorage,
   findLexiconEntry,
+  findLexiconEntryInStorage,
   getEnabledFuzzyPinyinMap,
   getEnabledPinyinMap,
+  getLexiconStorageMode,
   isFuzzyMatchEnabled,
   isLexiconEnabled,
   setFuzzyMatchEnabled,
@@ -12,6 +15,7 @@ import {
   setLexiconStorageMode,
 } from "../../cores/lexicon";
 import { subscribeFuzzyMatchChange, subscribeLexiconEnabledChange, subscribeLexiconStorageChange } from "../../cores/settings";
+import type { LexiconStorageMode } from "../../cores/settings";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -30,7 +34,7 @@ const HAN_ONLY = /^\p{Script=Han}+$/u;
 
 /**
  * 初始化词库功能：按「启用词库」开关动态挂载编辑器集成——
- * 右键菜单"添加到词库"与识别后处理扩展（高亮 + 点击替换），并预热启用词条拼音映射。
+ * 右键菜单（"添加到当前词库"与指向另一后端的定向项）与识别后处理扩展（高亮 + 点击替换），并预热启用词条拼音映射。
  * 订阅设置广播，开关切换时即时注册/注销，关闭后不残留监听与扩展；
  * 另同步「模糊音匹配」与「存储方式」开关，分别控制模糊映射的构建与读写后端的位置。
  * 返回同步清理函数：退订广播并整体停用，由 cleanFeatures 卸载时回收。
@@ -118,7 +122,8 @@ class LexiconIntegration {
 }
 
 /**
- * 右键菜单处理器：仅在存在非空选中文本时追加"添加到词库"。
+ * 右键菜单处理器：仅在存在非空选中文本时追加两项——写入当前词库，
+ * 外加写入另一存储方式的词库（无需切换存储方式即可定向添加）。
  * @param menu 右键菜单
  * @param editor 触发菜单的编辑器
  */
@@ -127,9 +132,18 @@ function handleEditorMenu(menu: Menu, editor: Editor): void {
   if (word === "") return;
   menu.addItem((item) =>
     item
-      .setTitle(t("lexicon.addSelection"))
+      .setTitle(t("lexicon.addToCurrentLexicon"))
       .setIcon("book-plus")
       .onClick(() => void addSelection(word)),
+  );
+  // 定向项指向非当前后端：当前全局时提供仓库项，反之提供全局项
+  const otherMode = getLexiconStorageMode() === "global" ? "vault" : "global";
+  const otherTitle = otherMode === "global" ? t("lexicon.addToGlobalLexicon") : t("lexicon.addToVaultLexicon");
+  menu.addItem((item) =>
+    item
+      .setTitle(otherTitle)
+      .setIcon("book-plus")
+      .onClick(() => void addSelectionTo(word, otherMode)),
   );
 }
 
@@ -145,6 +159,26 @@ async function addSelection(word: string): Promise<void> {
       return;
     }
     await addLexiconEntry({ word, pinyin, weight: 0, enable: true });
+    new Notice(t("lexicon.added", { word }), 3000);
+  } catch (error) {
+    new Notice(t("lexicon.addFailed", { detail: toErrorDetail(error) }), 5000);
+  }
+}
+
+/**
+ * 将选中文本写入指定存储方式的词库：查重与写入均限定目标后端，
+ * 无需切换当前存储方式；成功与失败提示与当前词库写入一致。
+ * @param word 已 trim 的选中文本
+ * @param mode 目标存储方式
+ */
+async function addSelectionTo(word: string, mode: LexiconStorageMode): Promise<void> {
+  try {
+    const pinyin = toPinyin(word);
+    if ((await findLexiconEntryInStorage(mode, word, pinyin)) !== null) {
+      new Notice(t("lexicon.duplicate", { word }), 3000);
+      return;
+    }
+    await addLexiconEntryToStorage(mode, { word, pinyin, weight: 0, enable: true });
     new Notice(t("lexicon.added", { word }), 3000);
   } catch (error) {
     new Notice(t("lexicon.addFailed", { detail: toErrorDetail(error) }), 5000);

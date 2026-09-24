@@ -88,7 +88,9 @@ const en = {
     toggleRecognition: "Toggle speech recognition",
   },
   lexicon: {
-    addSelection: "Add to lexicon",
+    addToCurrentLexicon: "Add to current lexicon",
+    addToGlobalLexicon: "Add to global lexicon",
+    addToVaultLexicon: "Add to vault lexicon",
     added: "Added to lexicon: {word}",
     duplicate: "Word already exists in the lexicon: {word}",
     addFailed: "Failed to add word to the lexicon: {detail}",

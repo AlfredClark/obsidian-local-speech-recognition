@@ -90,7 +90,9 @@ export const zh: TranslationResource = {
     toggleRecognition: "切换语音识别",
   },
   lexicon: {
-    addSelection: "添加到词库",
+    addToCurrentLexicon: "添加到当前词库",
+    addToGlobalLexicon: "添加到全局词库",
+    addToVaultLexicon: "添加到仓库词库",
     added: "已添加到词库：{word}",
     duplicate: "词库中已存在该词语：{word}",
     addFailed: "添加到词库失败：{detail}",
@@ -260,7 +262,9 @@ export const zhTW: TranslationResource = {
     toggleRecognition: "切換語音辨識",
   },
   lexicon: {
-    addSelection: "加入詞庫",
+    addToCurrentLexicon: "加入目前詞庫",
+    addToGlobalLexicon: "加入全域詞庫",
+    addToVaultLexicon: "加入倉庫詞庫",
     added: "已加入詞庫：{word}",
     duplicate: "詞庫中已存在該詞語：{word}",
     addFailed: "加入詞庫失敗：{detail}",

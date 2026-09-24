@@ -54,9 +54,14 @@ export async function setLexiconStorageMode(mode: LexiconStorageMode): Promise<v
   changeListeners.forEach((listener) => listener());
 }
 
+/** 按存储方式取后端实例；读操作直接委托，写操作由外观封装广播 */
+function storeFor(mode: LexiconStorageMode): typeof globalStore {
+  return mode === "vault" ? vaultStore : globalStore;
+}
+
 /** 当前读写后端实例；读操作直接委托，写操作由外观封装广播 */
 function activeStore(): typeof globalStore {
-  return storageMode === "vault" ? vaultStore : globalStore;
+  return storeFor(storageMode);
 }
 
 /** 当前词库功能是否启用；供需要短路的高频路径（如识别后处理）判断 */
@@ -206,10 +211,40 @@ export async function findLexiconEntry(word: string, pinyin: string, excludeId?:
 }
 
 /**
+ * 在指定后端按词语与拼音精确查找词条（严格相等），供右键定向添加等跨后端查重使用。
+ * @param mode 目标存储方式，不受当前读写位置影响
+ * @param word 待查找的词语；调用方传入 trim 后的值
+ * @param pinyin 待查找的拼音；与词语共同构成唯一性判定
+ * @returns 命中的词条，未找到返回 null
+ */
+export async function findLexiconEntryInStorage(
+  mode: LexiconStorageMode,
+  word: string,
+  pinyin: string,
+): Promise<LexiconEntry | null> {
+  if (word === "" || pinyin === "") return null;
+  const entries = await storeFor(mode).listEntries();
+  return entries.find((entry) => entry.word === word && entry.pinyin === pinyin) ?? null;
+}
+
+/**
  * 新增词条，id 由当前后端分配并回填。
  */
 export async function addLexiconEntry(input: LexiconEntryInput): Promise<LexiconEntry> {
   const entry = await activeStore().addEntry(input);
+  notifyLexiconChange();
+  return entry;
+}
+
+/**
+ * 向指定后端新增词条，id 由目标后端分配并回填。
+ * 映射重建与变更广播走统一路径：当前后端不受影响，订阅方按当前后端重载。
+ * @param mode 目标存储方式，不受当前读写位置影响
+ * @param input 新增词条输入
+ * @returns 目标后端分配 id 后的完整条目
+ */
+export async function addLexiconEntryToStorage(mode: LexiconStorageMode, input: LexiconEntryInput): Promise<LexiconEntry> {
+  const entry = await storeFor(mode).addEntry(input);
   notifyLexiconChange();
   return entry;
 }

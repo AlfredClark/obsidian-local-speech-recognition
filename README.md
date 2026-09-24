@@ -87,7 +87,7 @@ Pick a model under **Settings → Service settings → Recognition model**, then
 3. Open Speech input: pick a microphone. If the list is empty or unlabeled, allow microphone access once, then click Refresh microphones. Choose an input mode.
 4. Open Obsidian Settings → Hotkeys, find "Toggle speech recognition", and assign a hotkey.
 5. Focus a note editor, press the hotkey, speak, then press it again. The text is inserted at the cursor. If no editor is focused, the result goes to the clipboard with a Notice instead.
-6. Optional: build a lexicon of names or jargon. Select a word in an editor and pick **Add to lexicon** from the right-click menu; later transcriptions will underline it and offer one-click corrections. See [Lexicon](#lexicon) below.
+6. Optional: build a lexicon of names or jargon. Select a word in an editor and pick **Add to current lexicon** from the right-click menu (or **Add to global/vault lexicon** to write directly to the other storage without switching); later transcriptions will underline it and offer one-click corrections. See [Lexicon](#lexicon) below.
 
 ## Settings reference
 
@@ -133,7 +133,7 @@ Lexicon settings:
 - Push-to-talk mode (transitional): press to start; releasing the hotkey or pressing again stops and transcribes. Obsidian hotkeys only deliver key-down events, so exact hold-to-talk semantics are approximated for now.
 - Recording is capped at 280 seconds (the server rejects utterances over 300 seconds) and then transcribed automatically.
 - While a transcription is in flight, new triggers are rejected with a Notice.
-- Lexicon: select text in an editor and choose **Add to lexicon** from the right-click menu. After that, every transcription is scanned for lexicon words; matches get a dotted underline, and clicking one opens a menu of same-pinyin replacements.
+- Lexicon: select text in an editor and choose **Add to current lexicon** from the right-click menu. After that, every transcription is scanned for lexicon words; matches get a dotted underline, and clicking one opens a menu of same-pinyin replacements.
 - Manage entries in the sidebar (ribbon icon) → **Lexicon**: search, filter by enabled state, add/edit/delete, and batch enable/disable/delete.
 
 ## Lexicon
