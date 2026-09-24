@@ -13,6 +13,7 @@
     updateLexiconEntry,
   } from "../../lexicon";
   import type { LexiconEntry, LexiconEntryInput } from "../../lexicon";
+  import { persistLexiconStorageMode, subscribeLexiconStorageChange } from "../../settings";
   import type { LexiconStorageMode } from "../../settings";
   import { t } from "../../i18n";
   import type LocalSpeechRecognitionPlugin from "../../../main";
@@ -30,6 +31,8 @@
   let query = $state("");
   /** 启用状态筛选；与搜索关键字同时生效 */
   let enableFilter = $state<LexiconEnableFilter>("all");
+  /** 当前读写后端；工具栏下拉的选中值，设置页切换时经订阅同步 */
+  let storageMode = $state<LexiconStorageMode>(getLexiconStorageMode());
   /** 加载状态；首次加载与重试共用 */
   let loading = $state(true);
   /** 加载失败详情；非空时展示错误态与重试入口 */
@@ -73,12 +76,17 @@
   }
 
   // 挂载后加载一次，并订阅词库变更（右键菜单添加、批量操作等）静默刷新；
+  // 存储方式另有订阅：设置页切换时同步下拉选中（只赋值不回写，无循环）；
   // 语言切换由 SidebarRoot 的 #key 重建本组件并触发重新加载
   $effect(() => {
     void loadEntries();
     const unsubscribe = subscribeLexiconChange(() => void loadEntries(true));
+    const unsubscribeStorage = subscribeLexiconStorageChange((mode) => {
+      storageMode = mode;
+    });
     return () => {
       unsubscribe();
+      unsubscribeStorage();
       // 卸载后推进代际号，作废在途回包
       loadGeneration += 1;
     };
@@ -125,6 +133,17 @@
     } else {
       const filteredIds = new Set(filtered.map((entry) => entry.id));
       selectedIds = selectedIds.filter((id) => !filteredIds.has(id));
+    }
+  }
+
+  /** 切换读写后端：与设置页下拉等价（落盘 + 广播），成功后订阅回调同步下拉选中并重载列表 */
+  async function changeStorageMode(next: LexiconStorageMode): Promise<void> {
+    if (next === getLexiconStorageMode()) return;
+    try {
+      await persistLexiconStorageMode(plugin, next);
+    } catch (error) {
+      // 落盘失败：storageMode 未变，单向绑定的下拉自动回弹，无需手动回滚
+      new Notice(t("sidebar.lexiconSaveFailed", { detail: toDetail(error) }), 5000);
     }
   }
 
@@ -367,6 +386,16 @@
     <option value="all">{t("sidebar.lexiconFilterAll")}</option>
     <option value="enabled">{t("sidebar.lexiconFilterEnabled")}</option>
     <option value="disabled">{t("sidebar.lexiconFilterDisabled")}</option>
+  </select>
+  <select
+    value={storageMode}
+    title={t("settings.lexiconStorage")}
+    aria-label={t("settings.lexiconStorage")}
+    disabled={loading}
+    onchange={(event) => void changeStorageMode(event.currentTarget.value as LexiconStorageMode)}
+  >
+    <option value="global">{t("settings.lexiconStorageOptions.global")}</option>
+    <option value="vault">{t("settings.lexiconStorageOptions.vault")}</option>
   </select>
   <button
     type="button"

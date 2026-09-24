@@ -75,6 +75,19 @@ function notifyLexiconStorageChange(mode: LexiconStorageMode): void {
 }
 
 /**
+ * 持久化词库存储方式并广播：与声明式设置页等价的手动写入路径
+ * （框架的 setControlValue 即“改 plugin.settings + 落盘”，此处显式复现），
+ * 供声明式设置页之外的调用方（如侧边栏词库页下拉）使用。
+ * @param plugin 插件实例；type-only 导入具体类，运行时无循环
+ * @param mode 待写入的存储方式
+ */
+export async function persistLexiconStorageMode(plugin: LocalSpeechRecognitionPlugin, mode: LexiconStorageMode): Promise<void> {
+  plugin.settings.lexiconStorage = mode;
+  await plugin.saveData(plugin.settings);
+  notifyLexiconStorageChange(mode);
+}
+
+/**
  * 订阅模糊音匹配开关变更。开关仅在设置页被切换（settings 层写入后广播），
  * 订阅方据此重建模糊映射。
  * @param listener 开关变更回调，参数为最新启用状态
