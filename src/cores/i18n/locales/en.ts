@@ -69,6 +69,12 @@ const en = {
     lexiconDesc: "Turn the lexicon on or off, and manage its entries",
     lexiconEnable: "Enable lexicon",
     lexiconEnableDesc: "Enable right-click additions and recognition enhancement",
+    lexiconStorage: "Lexicon storage",
+    lexiconStorageDesc: "Global storage is shared across vaults, vault storage is isolated per vault",
+    lexiconStorageOptions: {
+      global: "Global",
+      vault: "Vault",
+    },
     fuzzyMatch: "Fuzzy pinyin matching",
     fuzzyMatchDesc: "Also treat retroflex and nasal confusions as identical",
     lexiconExport: "Export lexicon",

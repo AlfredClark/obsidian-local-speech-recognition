@@ -9,8 +9,9 @@ import {
   isLexiconEnabled,
   setFuzzyMatchEnabled,
   setLexiconEnabled,
+  setLexiconStorageMode,
 } from "../../cores/lexicon";
-import { subscribeFuzzyMatchChange, subscribeLexiconEnabledChange } from "../../cores/settings";
+import { subscribeFuzzyMatchChange, subscribeLexiconEnabledChange, subscribeLexiconStorageChange } from "../../cores/settings";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -31,7 +32,7 @@ const HAN_ONLY = /^\p{Script=Han}+$/u;
  * 初始化词库功能：按「启用词库」开关动态挂载编辑器集成——
  * 右键菜单"添加到词库"与识别后处理扩展（高亮 + 点击替换），并预热启用词条拼音映射。
  * 订阅设置广播，开关切换时即时注册/注销，关闭后不残留监听与扩展；
- * 另同步「模糊音匹配」开关，控制模糊映射的构建与使用。
+ * 另同步「模糊音匹配」与「存储方式」开关，分别控制模糊映射的构建与读写后端的位置。
  * 返回同步清理函数：退订广播并整体停用，由 cleanFeatures 卸载时回收。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
  * @returns 卸载时停用集成并退订的清理函数
@@ -40,12 +41,16 @@ export async function initLexicon(plugin: LocalSpeechRecognitionPlugin): Promise
   const integration = new LexiconIntegration(plugin);
   const unsubscribe = subscribeLexiconEnabledChange((enabled) => void integration.apply(enabled));
   const unsubscribeFuzzy = subscribeFuzzyMatchChange((enabled) => void setFuzzyMatchEnabled(enabled));
+  // 存储方式切换：只改变后续读写位置并重建映射，两后端数据相互独立不互相同步；
+  // 启动时模式已由 initLexiconStore 按持久化设置恢复，此处仅订阅运行时变更
+  const unsubscribeStorage = subscribeLexiconStorageChange((mode) => void setLexiconStorageMode(mode));
   await integration.apply(plugin.settings.lexiconEnabled);
   // 先应用词库开关再设模糊：避免启动时映射重建两次
   await setFuzzyMatchEnabled(plugin.settings.fuzzyMatchEnabled);
   return () => {
     unsubscribe();
     unsubscribeFuzzy();
+    unsubscribeStorage();
     integration.dispose();
   };
 }

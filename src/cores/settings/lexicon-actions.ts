@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import {
   addLexiconEntries,
   clearLexiconEntries,
+  getLexiconStorageMode,
   listLexiconEntries,
   parseLexiconJson,
   parseLexiconTxt,
@@ -157,13 +158,13 @@ function downloadTextFile(text: string, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** 导出文件名：本地时间戳到秒，便于多次导出区分 */
+/** 导出文件名：本地时间戳到秒 + 存储作用域，便于区分全局与仓库导出 */
 function buildExportFileName(): string {
   const now = new Date();
   const pad = (value: number): string => String(value).padStart(2, "0");
   const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `local-speech-recognition-lexicon-${date}-${time}.json`;
+  return `local-speech-recognition-lexicon-${getLexiconStorageMode()}-${date}-${time}.json`;
 }
 
 /** 去重键：word 与 pinyin 严格一致视为同一条 */

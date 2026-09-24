@@ -6,6 +6,18 @@ export type SpeechInputMode = "toggle" | "push-to-talk";
 
 export type ProviderType = "cpu" | "cuda" | "coreml";
 
+/** 词库存储方式：global 全仓库共享的 IndexedDB，vault 仓库内独立的 lexicon.json */
+export type LexiconStorageMode = "global" | "vault";
+
+/**
+ * 词库存储方式守卫：旧版本或手改 data.json 出现未知标识时回退默认，避免下拉与后端路由落空。
+ * @param value 待校验的值
+ * @returns 是否为合法的存储方式标识
+ */
+export function isLexiconStorageMode(value: unknown): value is LexiconStorageMode {
+  return value === "global" || value === "vault";
+}
+
 /**
  * 插件设置结构。声明式设置 API 按 key 直接读写此结构，
  * 新增字段须同步在 DEFAULT_SETTINGS 补默认值。
@@ -37,6 +49,8 @@ export interface LocalSpeechRecognitionPluginSettings {
   microphoneDeviceId: string;
   /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
   lexiconEnabled: boolean;
+  /** 词库存储方式：全局共享或仓库独立，两后端数据相互独立不互相同步 */
+  lexiconStorage: LexiconStorageMode;
   /** 是否启用模糊音匹配：开启后平翘舌与前后鼻音的差异也视为命中，关闭时仅精确同音 */
   fuzzyMatchEnabled: boolean;
 }

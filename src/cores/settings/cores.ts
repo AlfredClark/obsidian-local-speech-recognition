@@ -1,6 +1,7 @@
 import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
+import { isLexiconStorageMode, type LexiconStorageMode } from "./types";
 import { getSherpaServer } from "../sherpa-server";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -24,11 +25,15 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   inputMode: "toggle",
   microphoneDeviceId: "",
   lexiconEnabled: true,
+  lexiconStorage: "global",
   fuzzyMatchEnabled: false,
 };
 
 /** 词库开关变更订阅回调集合；设置页写入后广播，词库 feature 与侧边栏据此启停 */
 const lexiconEnabledListeners = new Set<(enabled: boolean) => void>();
+
+/** 词库存储方式变更订阅回调集合；设置页写入后广播，词库 feature 据此切换后端 */
+const lexiconStorageListeners = new Set<(mode: LexiconStorageMode) => void>();
 
 /** 模糊音匹配开关变更订阅回调集合；设置页写入后广播，词库 feature 据此重建映射 */
 const fuzzyMatchListeners = new Set<(enabled: boolean) => void>();
@@ -49,6 +54,24 @@ export function subscribeLexiconEnabledChange(listener: (enabled: boolean) => vo
 /** 广播词库开关变更。由 settings 模块在 lexiconEnabled 写入后调用 */
 function notifyLexiconEnabledChange(enabled: boolean): void {
   lexiconEnabledListeners.forEach((listener) => listener(enabled));
+}
+
+/**
+ * 订阅词库存储方式变更。存储方式仅在设置页被切换（settings 层写入后广播），
+ * 订阅方据此切换读写后端并重建映射，两后端数据相互独立不互相同步。
+ * @param listener 存储方式变更回调，参数为最新存储方式
+ * @returns 取消订阅函数
+ */
+export function subscribeLexiconStorageChange(listener: (mode: LexiconStorageMode) => void): () => void {
+  lexiconStorageListeners.add(listener);
+  return () => {
+    lexiconStorageListeners.delete(listener);
+  };
+}
+
+/** 广播词库存储方式变更。由 settings 模块在 lexiconStorage 写入后调用 */
+function notifyLexiconStorageChange(mode: LexiconStorageMode): void {
+  lexiconStorageListeners.forEach((listener) => listener(mode));
 }
 
 /**
@@ -91,6 +114,10 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   // 模型登记表条目可能被移除或改名：未知标识回退默认模型，避免下拉与启动参数落空
   if (!isSherpaModelId(settings.modelType)) {
     settings.modelType = DEFAULT_SHERPA_MODEL_ID;
+  }
+  // 旧版本 data.json 无存储方式字段：未知标识回退全局，保持存量行为不变
+  if (!isLexiconStorageMode(settings.lexiconStorage)) {
+    settings.lexiconStorage = "global";
   }
   return settings;
 }
@@ -167,6 +194,10 @@ export class SettingsTab extends PluginSettingTab {
     // 词库开关广播：编辑器集成与侧边栏词库页靠订阅动态启停
     if (key === "lexiconEnabled") {
       notifyLexiconEnabledChange(value === true);
+    }
+    // 存储方式广播：词库 feature 靠订阅切换读写后端，两后端数据相互独立
+    if (key === "lexiconStorage" && isLexiconStorageMode(value)) {
+      notifyLexiconStorageChange(value);
     }
     // 模糊音开关广播：词库 feature 靠订阅重建模糊映射
     if (key === "fuzzyMatchEnabled") {
@@ -375,9 +406,9 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
-   * 词库设置条目：启用开关 + 导出/导入（JSON 或每行一词的纯文本）/清空。
-   * 开关为持久化设置，其余为动作行（点击委托 lexicon-actions.ts，反馈经 Notice 提示），
-   * 动作行随开关隐藏，关闭词库时不再暴露管理入口。
+   * 词库设置条目：启用开关 + 存储方式（全局/仓库独立）+ 导出/导入（JSON 或每行一词的纯文本）/清空。
+   * 开关与存储方式为持久化设置，其余为动作行（点击委托 lexicon-actions.ts，反馈经 Notice 提示），
+   * 存储方式与动作行随开关隐藏，关闭词库时不再暴露管理入口。
    */
   private getLexiconItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
     return [
@@ -388,6 +419,21 @@ export class SettingsTab extends PluginSettingTab {
           type: "toggle",
           key: "lexiconEnabled",
           defaultValue: true,
+        },
+      },
+      {
+        name: t("settings.lexiconStorage"),
+        desc: t("settings.lexiconStorageDesc"),
+        // 词库关闭时不显示：该选项仅决定词条读写位置，无词库时无意义
+        visible: () => this.plugin.settings.lexiconEnabled,
+        control: {
+          type: "dropdown",
+          key: "lexiconStorage",
+          defaultValue: "global",
+          options: {
+            global: t("settings.lexiconStorageOptions.global"),
+            vault: t("settings.lexiconStorageOptions.vault"),
+          },
         },
       },
       {

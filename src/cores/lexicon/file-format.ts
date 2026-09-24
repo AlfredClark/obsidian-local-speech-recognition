@@ -4,7 +4,7 @@ import { toPinyin } from "../../utils/pinyin";
 /** 导出文件的格式版本；导入时按需兼容旧版本 */
 export const LEXICON_FILE_VERSION = 1;
 
-/** 导出文件结构；不含 id，导入时由 IndexedDB 自增重新分配，保证文件可移植 */
+/** 导出文件结构；不含 id，导入时由存储层重新分配，保证文件可移植 */
 interface LexiconFilePayload {
   version: number;
   exportedAt: string;
@@ -101,6 +101,28 @@ function normalizeInput(raw: unknown): LexiconEntryInput | null {
     word: trimmedWord,
     pinyin: typeof pinyin === "string" && pinyin.trim() !== "" ? pinyin.trim() : toPinyin(trimmedWord),
     weight: typeof weight === "number" && Number.isFinite(weight) ? weight : 0,
+    enable: typeof enable === "boolean" ? enable : true,
+  };
+}
+
+/**
+ * 运行时归一化已存储条目：id/word/pinyin 类型不符的脏数据丢弃，
+ * 后加的可选字段缺失时按默认值补齐（兼容旧记录）。
+ * 全局 IndexedDB 与仓库文件两后端共用，保证读取口径一致。
+ * @param raw 存储层读出的原始值
+ * @returns 归一化后的条目，脏数据返回 null
+ */
+export function normalizeStoredEntry(raw: unknown): LexiconEntry | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  const { id, word, pinyin, weight, enable } = record;
+  if (typeof id !== "number" || typeof word !== "string" || typeof pinyin !== "string") return null;
+  return {
+    id,
+    word,
+    pinyin,
+    weight: typeof weight === "number" ? weight : 0,
+    // enable 为后加字段，旧记录缺失时按启用处理
     enable: typeof enable === "boolean" ? enable : true,
   };
 }
