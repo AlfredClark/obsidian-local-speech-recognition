@@ -33,33 +33,34 @@
   },
   "devDependencies": {
     "@codemirror/lint": "^6.9.7",
-    "@codemirror/state": "^6.7.4",
-    "@codemirror/view": "^6.43.11",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.6.2",
     "codemirror": "^6.0.2",
     "esbuild": "^0.28.2",
     "esbuild-svelte": "^0.9.5",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-obsidianmd": "^0.4.2",
     "eslint-plugin-svelte": "^3.23.0",
     "globals": "^17.12.0",
     "jiti": "^2.7.0",
     "obsidian": "latest",
-    "pinyin-pro": "^3.29.3",
-    "prettier": "^3.9.6",
+    "pinyin-pro": "^3.29.4",
+    "prettier": "^3.9.9",
     "prettier-plugin-svelte": "^4.1.1",
     "stylelint": "^17.15.0",
     "stylelint-config-standard": "^40.0.0",
-    "svelte": "^5.57.0",
+    "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.1"
   },
   "overrides": {
     "brace-expansion": "^5.0.9",
     "fast-uri": "^3.1.4",
-    "js-yaml": "^4.3.2"
+    "js-yaml": "^4.3.2",
+    "devalue": "^5.9.2"
   }
 }
