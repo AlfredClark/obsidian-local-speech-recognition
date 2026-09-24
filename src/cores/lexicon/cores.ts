@@ -191,6 +191,15 @@ function notifyLexiconChange(): void {
 }
 
 /**
+ * 读取指定后端全部词条，按 id 降序（最新在前）返回。
+ * 供批量复制/迁移等跨后端操作读取目标或源端数据。
+ * @param mode 目标存储方式，不受当前读写位置影响
+ */
+export async function listLexiconEntriesInStorage(mode: LexiconStorageMode): Promise<LexiconEntry[]> {
+  return storeFor(mode).listEntries();
+}
+
+/**
  * 读取当前后端全部词条，按 id 降序（最新在前）返回。
  */
 export async function listLexiconEntries(): Promise<LexiconEntry[]> {
@@ -256,6 +265,19 @@ export async function addLexiconEntryToStorage(mode: LexiconStorageMode, input: 
  */
 export async function addLexiconEntries(inputs: LexiconEntryInput[]): Promise<number> {
   const added = await activeStore().addEntries(inputs);
+  if (added > 0) notifyLexiconChange();
+  return added;
+}
+
+/**
+ * 向指定后端批量新增词条；返回新增条数。id 由目标后端分配，调用方不提供。
+ * 供侧边栏批量复制/迁移使用；映射重建与变更广播走统一路径。
+ * @param mode 目标存储方式，不受当前读写位置影响
+ * @param inputs 待新增的词条列表，空列表直接返回 0
+ * @returns 实际新增的条数
+ */
+export async function addLexiconEntriesToStorage(mode: LexiconStorageMode, inputs: LexiconEntryInput[]): Promise<number> {
+  const added = await storeFor(mode).addEntries(inputs);
   if (added > 0) notifyLexiconChange();
   return added;
 }

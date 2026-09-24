@@ -1,15 +1,19 @@
 <script lang="ts">
   import { Menu, Notice, setIcon } from "obsidian";
   import {
+    addLexiconEntriesToStorage,
     addLexiconEntry,
     deleteLexiconEntries,
     deleteLexiconEntry,
+    getLexiconStorageMode,
     listLexiconEntries,
+    listLexiconEntriesInStorage,
     subscribeLexiconChange,
     updateLexiconEntries,
     updateLexiconEntry,
   } from "../../lexicon";
   import type { LexiconEntry, LexiconEntryInput } from "../../lexicon";
+  import type { LexiconStorageMode } from "../../settings";
   import { t } from "../../i18n";
   import type LocalSpeechRecognitionPlugin from "../../../main";
   import { openLexiconEntryModal } from "../lexicon-entry-modal";
@@ -206,9 +210,71 @@
     }
   }
 
+  /** 批量复制已勾选条目到另一存储后端；目标已存在与本次重复的跳过，源端不动 */
+  async function batchCopyTo(target: LexiconStorageMode): Promise<void> {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      const { added, skipped } = await copySelectedTo(target, ids);
+      selectedIds = [];
+      new Notice(t("lexicon.batchCopied", { added, skipped }), 5000);
+    } catch (error) {
+      new Notice(t("sidebar.lexiconSaveFailed", { detail: toDetail(error) }), 5000);
+    }
+  }
+
+  /** 批量迁移已勾选条目到另一存储后端；复制成功后删除源端全部选中条目（真移动） */
+  async function batchMoveTo(target: LexiconStorageMode): Promise<void> {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      const { skipped } = await copySelectedTo(target, ids);
+      await deleteLexiconEntries(ids);
+      const removed = new Set(ids);
+      entries = entries.filter((item) => !removed.has(item.id));
+      selectedIds = [];
+      if (pendingDeleteId !== null && removed.has(pendingDeleteId)) pendingDeleteId = null;
+      new Notice(t("lexicon.batchMoved", { moved: ids.length, skipped }), 5000);
+    } catch (error) {
+      new Notice(t("sidebar.lexiconDeleteFailed", { detail: toDetail(error) }), 5000);
+    }
+  }
+
+  /**
+   * 将选中条目去重后写入目标后端：目标已有（word+pinyin 严格一致）与本次入参内重复的跳过，
+   * 保留拼音/权重/启用态；id 由目标后端重新分配。
+   * @param target 目标存储方式
+   * @param ids 选中的源端条目 id 列表
+   * @returns 实际新增与跳过条数
+   */
+  async function copySelectedTo(target: LexiconStorageMode, ids: number[]): Promise<{ added: number; skipped: number }> {
+    const idSet = new Set(ids);
+    const picked = entries.filter((item) => idSet.has(item.id));
+    // 目标已有跳过：existingKeys 构造后只读（原地 add 会触发 svelte/prefer-svelte-reactivity）
+    const existingKeys = new Set((await listLexiconEntriesInStorage(target)).map((entry) => entryKey(entry)));
+    const candidates = picked.filter((entry) => !existingKeys.has(entryKey(entry)));
+    // 本次入参内去重保留首条：seenKeys 为普通数组，push 不涉及响应式代理规则
+    const seenKeys: string[] = [];
+    const fresh: LexiconEntryInput[] = [];
+    for (const entry of candidates) {
+      const key = entryKey(entry);
+      if (seenKeys.includes(key)) continue;
+      seenKeys.push(key);
+      fresh.push({ word: entry.word, pinyin: entry.pinyin, weight: entry.weight, enable: entry.enable });
+    }
+    const added = await addLexiconEntriesToStorage(target, fresh);
+    return { added, skipped: picked.length - added };
+  }
+
+  /** 去重键：word 与 pinyin 严格一致视为同一条（与导入逻辑一致） */
+  function entryKey(entry: Pick<LexiconEntry, "word" | "pinyin">): string {
+    return `${entry.word}\u0000${entry.pinyin}`;
+  }
   /** 打开批量操作菜单：菜单挂到鼠标位置，删除项以警示色区分 */
   function openBatchMenu(event: MouseEvent): void {
     if (!hasSelection) return;
+    // 复制/迁移目标恒为非当前后端，与右键定向添加逻辑一致，打开菜单时现场判定
+    const target: LexiconStorageMode = getLexiconStorageMode() === "global" ? "vault" : "global";
     const menu = new Menu();
     menu.addItem((item) =>
       item
@@ -221,6 +287,19 @@
         .setTitle(t("sidebar.lexiconBatchDisable"))
         .setIcon("toggle-left")
         .onClick(() => void batchSetEnable(false)),
+    );
+    menu.addSeparator();
+    menu.addItem((item) =>
+      item
+        .setTitle(target === "global" ? t("sidebar.lexiconBatchCopyToGlobal") : t("sidebar.lexiconBatchCopyToVault"))
+        .setIcon("copy")
+        .onClick(() => void batchCopyTo(target)),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle(target === "global" ? t("sidebar.lexiconBatchMoveToGlobal") : t("sidebar.lexiconBatchMoveToVault"))
+        .setIcon("move")
+        .onClick(() => void batchMoveTo(target)),
     );
     menu.addSeparator();
     menu.addItem((item) =>
