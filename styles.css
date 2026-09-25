@@ -45,44 +45,6 @@
   color: var(--text-accent);
 }
 
-/* 手柄键位一览：行内换行独占一行，动作名 + 键帽横向紧凑排布 */
-.setting-item.lsr-gamepad-map-row {
-  flex-wrap: wrap;
-}
-
-.lsr-gamepad-map {
-  flex: 1 1 100%;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 2px 12px;
-  margin-top: 2px;
-}
-
-.lsr-gamepad-map-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-}
-
-.lsr-gamepad-map-caps {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-kbd.lsr-gamepad-key {
-  padding: 0 6px;
-  border: 1px solid var(--background-modifier-border);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  background-color: var(--background-secondary);
-  font-size: var(--font-ui-smaller);
-  color: var(--text-normal);
-  white-space: nowrap;
-}
-
 .lsr-service-badge[data-status="running"] {
   color: var(--text-success);
 }

@@ -1,5 +1,4 @@
 import type { PluginLanguage } from "../i18n";
-import type { GamepadPresetId } from "../gamepad";
 import type { SherpaModelId } from "../../utils/sherpa-process";
 
 /** 语音输入触发模式：toggle 单次点击切换，push-to-talk 按住说话 */
@@ -50,26 +49,24 @@ export interface LocalSpeechRecognitionPluginSettings {
   microphoneDeviceId: string;
   /** 是否启用手柄：开启后可用手柄触发录音、移动光标与切换词库候选 */
   gamepadEnabled: boolean;
-  /** 手柄预设键位：录音/确认/取消三功能键的映射布局 */
-  gamepadPreset: GamepadPresetId;
   /** 摇杆死区：低于此幅度的漂移视为 0，0~0.5 */
   gamepadDeadzone: number;
   /** 滚动速度倍率：乘以满偏每帧像素，0.5~2 */
   gamepadScrollSpeed: number;
   /** 是否反转滚动方向：仅作用于滚动轴，逐行方向保持绝对上下 */
   gamepadInvertScrollY: boolean;
-  /** 逐字连发间隔毫秒：按住摇杆横向时的步进间隔，30~150 */
+  /** 逐字间隔毫秒：右摇杆横向步进，同时作为扳机满按速度基准 */
   gamepadCharInterval: number;
-  /** 逐行连发间隔毫秒：按住摇杆纵向时的步进间隔，60~300 */
+  /** 逐行间隔毫秒：右摇杆纵向与 LB/RB 跳段步进 */
   gamepadLineInterval: number;
-  /** 十字键初次延时毫秒：按住超此阈值后开始连发，200~800 */
-  gamepadDpadDelay: number;
-  /** 十字键连发间隔毫秒，60~300 */
+  /** 按住延时毫秒：十字键、LB/RB、退格、扳机共用的初次连发延时 */
+  gamepadHoldDelay: number;
+  /** 十字键间隔毫秒：四向连发步进 */
   gamepadDpadInterval: number;
-  /** 退格初次延时毫秒，200~800 */
-  gamepadBackspaceDelay: number;
-  /** 退格连发间隔毫秒，30~150 */
+  /** 退格间隔毫秒：B 键连删步进 */
   gamepadBackspaceInterval: number;
+  /** 扳机阈值：深度低于此值视为松开，0~0.4 */
+  gamepadTriggerThreshold: number;
   /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
   lexiconEnabled: boolean;
   /** 词库存储方式：全局共享或仓库独立，两后端数据相互独立不互相同步 */

@@ -2,10 +2,8 @@ import { MarkdownView, Platform } from "obsidian";
 import { dismissTargetEffect } from "../lexicon";
 import { requestSpeechRecognitionTrigger } from "../speech-recognition";
 import { getEnabledFuzzyPinyinMap, getEnabledPinyinMap, isLexiconEnabled } from "../../cores/lexicon";
-import { GAMEPAD_PRESETS, startGamepadPolling } from "../../cores/gamepad";
-import type { GamepadPreset } from "../../cores/gamepad";
+import { startGamepadPolling } from "../../cores/gamepad";
 import type { GamepadButtonName, GamepadFrame, GamepadStickState } from "../../cores/gamepad";
-import type { GamepadDpadLRRole, GamepadDpadRole } from "../../cores/gamepad";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { EditorView } from "@codemirror/view";
@@ -13,6 +11,8 @@ import type { GamepadCandidateSpan } from "./types";
 
 /** 满偏每帧滚动像素基数：乘以滚动倍率设置，60fps 满偏默认约 1300px/s */
 const SCROLL_PIXELS_PER_FRAME = 22;
+/** 扳机最小间隔毫秒：满按再快也不低于此值，防极端设置刷屏 */
+const TRIGGER_MIN_INTERVAL_MS = 20;
 /** 手柄当前高亮片段的激活样式类：左右切换时跟随，退出导航即清除 */
 const ACTIVE_SPAN_CLASS = "lsr-target-active";
 /** 候选浮层类名：选项容器/候选项/当前高亮项，样式见 styles.css */
@@ -39,11 +39,8 @@ export async function initGamepad(plugin: LocalSpeechRecognitionPlugin): Promise
     plugin,
     (frame, pressed, held) => controller.handleFrame(frame, pressed, held),
     () => plugin.settings.gamepadEnabled,
-    // 预设与死区逐帧供给：设置页拖动下帧即生效，无需重启
-    () => ({
-      preset: GAMEPAD_PRESETS[plugin.settings.gamepadPreset],
-      deadzone: plugin.settings.gamepadDeadzone,
-    }),
+    // 死区逐帧供给：设置页拖动下帧即生效，无需重启
+    () => ({ deadzone: plugin.settings.gamepadDeadzone }),
   );
   return () => {
     stopPolling();
@@ -60,6 +57,11 @@ class GamepadInputController {
   // 十字键按住连发计时：记录按住起点与上次触发，松开即清
   private dpadHoldStart = new Map<GamepadButtonName, number>();
   private dpadLastFire = new Map<GamepadButtonName, number>();
+  // 扳机按住计时：左右独立，阈值以下或失焦即清零
+  private triggerBack = { start: 0, last: 0 };
+  private triggerForward = { start: 0, last: 0 };
+  // 选取会话锚点：双扳机共享，松开保留以支持换向缩小；外部改动选区后下次边沿自动重建
+  private selectAnchor: number | null = null;
 
   constructor(plugin: LocalSpeechRecognitionPlugin) {
     this.plugin = plugin;
@@ -71,37 +73,48 @@ class GamepadInputController {
     if (!this.plugin.settings.gamepadEnabled) {
       this.session.exit();
       this.dpadHoldStart.clear();
+      this.triggerBack.start = 0;
+      this.triggerBack.last = 0;
+      this.triggerForward.start = 0;
+      this.triggerForward.last = 0;
+      this.selectAnchor = null;
       return;
     }
     // 分发总览（改分流逻辑时逐项核对，防调用掉线；工具链不报未使用的私有方法）：
-    // 录音/确认/换行/取消/精确×2/切段×2/十字键×4/双摇杆
+    // 录音/确认/撤销/取消/跳行×2/扳机选取×2/左右切段/上下选候选/双摇杆
     if (pressed.has("record")) this.triggerRecognition();
     if (pressed.has("confirm")) this.confirmSession();
-    if (pressed.has("newline")) this.insertNewlineOnce();
+    if (pressed.has("undo")) this.undoOnce();
     const now = performance.now();
     this.handleButtonB(pressed, held, now);
-    // 精确单步走通用连发通道：按下即走，按住超阈值后连发，松开复位；切段仍只响应边沿
-    this.handleDpad("cursorLeft", pressed, held, now, () => this.nudgeCursor(-1));
-    this.handleDpad("cursorRight", pressed, held, now, () => this.nudgeCursor(1));
-    if (pressed.has("spanPrev")) this.navigateSpan(-1);
-    if (pressed.has("spanNext")) this.navigateSpan(1);
-    // 十字键按预设角色分流，切换预设下帧即生效
-    const preset = this.currentPreset();
-    this.handleDpad("dpadLeft", pressed, held, now, () => this.dpadAction(preset.dpadLeftRight, -1));
-    this.handleDpad("dpadRight", pressed, held, now, () => this.dpadAction(preset.dpadLeftRight, 1));
-    this.handleDpad("dpadUp", pressed, held, now, () => this.dpadAction(preset.dpadUpDown, -1));
-    this.handleDpad("dpadDown", pressed, held, now, () => this.dpadAction(preset.dpadUpDown, 1));
+    // LB/RB 精确跳行：起跳手感与十字键一致、步进节奏与逐行一致
+    const lineTiming = {
+      delay: this.plugin.settings.gamepadHoldDelay,
+      interval: this.plugin.settings.gamepadLineInterval,
+    };
+    this.handleDpad("lineUp", pressed, held, now, () => this.jumpLine(-1), lineTiming);
+    this.handleDpad("lineDown", pressed, held, now, () => this.jumpLine(1), lineTiming);
+    this.handleTriggers(frame, now);
+    this.handleDpad("dpadLeft", pressed, held, now, () => this.navigateSpan(-1));
+    this.handleDpad("dpadRight", pressed, held, now, () => this.navigateSpan(1));
+    this.handleDpad("dpadUp", pressed, held, now, () => this.cycleCandidate(-1));
+    this.handleDpad("dpadDown", pressed, held, now, () => this.cycleCandidate(1));
     if (frame.connected) {
-      this.handleLeftStick(frame, now);
+      this.handleLeftStick(frame);
       this.handleRightStick(frame, now);
     }
   }
 
-  /** 卸载时退出导航并清空连发计时，不等待任何异步 */
+  /** 卸载时退出导航并清空连发计时与选取锚点，不等待任何异步 */
   dispose(): void {
     this.session.exit();
     this.dpadHoldStart.clear();
     this.dpadLastFire.clear();
+    this.triggerBack.start = 0;
+    this.triggerBack.last = 0;
+    this.triggerForward.start = 0;
+    this.triggerForward.last = 0;
+    this.selectAnchor = null;
   }
 
   /** 录音键触发：复用语音识别的全局触发器，状态机与 busy 提示保持单一入口 */
@@ -111,16 +124,13 @@ class GamepadInputController {
     requestSpeechRecognitionTrigger();
   }
 
-  /** 确认键：浮层打开时落盘当前高亮候选并留在原地，否则退出导航 */
+  /** 确认键：浮层打开时落盘当前高亮候选并留在原地，文本中则换行（换行自带退导航） */
   private confirmSession(): void {
     if (this.session.isPopupOpen()) {
       this.session.confirmPopup();
       return;
     }
-    if (!this.session.hasSpans()) return;
-    this.session.exit();
-    const view = this.resolveEditorView(false);
-    if (view !== null) view.focus();
+    this.insertNewlineOnce();
   }
 
   /**
@@ -150,36 +160,99 @@ class GamepadInputController {
     }
     const start = this.dpadHoldStart.get("cancel") ?? now;
     const last = this.dpadLastFire.get("cancel") ?? 0;
-    if (
-      now - start >= this.plugin.settings.gamepadBackspaceDelay &&
-      now - last >= this.plugin.settings.gamepadBackspaceInterval
-    ) {
+    if (now - start >= this.plugin.settings.gamepadHoldDelay && now - last >= this.plugin.settings.gamepadBackspaceInterval) {
       this.dpadLastFire.set("cancel", now);
       this.deleteBackwardOnce(view);
     }
   }
 
-  /** 单次退格：删完即退出导航（文档写入使缓存坐标过期），装饰经映射保留 */
+  /** 单次退格：删完即退出导航并废弃选取锚点（文档写入使缓存坐标过期），装饰经映射保留 */
   private deleteBackwardOnce(view: EditorView): void {
     deleteBackward(view);
     this.session.exit();
+    this.selectAnchor = null;
   }
 
-  /** 换行键：边沿触发一次（不连发，防误触刷出空行），要求编辑器聚焦 */
+  /** 换行：边沿触发一次（不连发，防误触刷出空行），要求编辑器聚焦 */
   private insertNewlineOnce(): void {
     const view = this.resolveEditorView(true);
     if (view === null) return;
     this.session.closePopup();
     insertNewline(view);
     this.session.exit();
+    this.selectAnchor = null;
   }
 
-  /** 肩键精确移动：单步一字，要求编辑器聚焦；选区变更不使坐标过期，仅关浮层 */
-  private nudgeCursor(delta: -1 | 1): void {
+  /** 撤销：边沿触发一次（不连发），等效 Ctrl+Z，要求编辑器聚焦否则静默 */
+  private undoOnce(): void {
+    const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view === null || view.getMode() !== "source") return;
+    const editor = view.editor;
+    if (!editor.hasFocus()) return;
+    this.session.closePopup();
+    editor.undo();
+    this.session.exit();
+    this.selectAnchor = null;
+  }
+
+  /** 肩键跳段：逻辑行整行跳转、列位保持，首尾无操作；仅关浮层不退导航 */
+  private jumpLine(delta: -1 | 1): void {
     const view = this.resolveEditorView(true);
     if (view === null) return;
     this.session.closePopup();
-    moveCursorByChar(view, delta);
+    moveCursorByLogicalLine(view, delta);
+  }
+
+  /**
+   * 扳机扩展选取：左退右进，共享锚点；按下沿新方向继续（同向追加、反向缩小），
+   * 外部改动选区后自动新建锚点；按住持续扩展，深度连续控速。
+   * 阈值以下视为松开（选区与锚点保留）；双扳机同按各走各的方向。
+   */
+  private handleTriggers(frame: GamepadFrame, now: number): void {
+    this.handleTrigger("back", frame.triggers.left, -1, now);
+    this.handleTrigger("forward", frame.triggers.right, 1, now);
+  }
+
+  /** 单扳机分发：边沿建锚或恢复会话并单步，按住按深度动态间隔扩展选区 */
+  private handleTrigger(side: "back" | "forward", depth: number, delta: -1 | 1, now: number): void {
+    const state = side === "back" ? this.triggerBack : this.triggerForward;
+    const threshold = this.plugin.settings.gamepadTriggerThreshold;
+    if (depth < threshold) {
+      state.start = 0;
+      state.last = 0;
+      return;
+    }
+    const view = this.resolveEditorView(true);
+    if (view === null) {
+      state.start = 0;
+      state.last = 0;
+      return;
+    }
+    if (state.start === 0) {
+      state.start = now;
+      state.last = now;
+      // 会话恢复：选区未折叠且实时锚点命中共享锚点时沿新方向继续（同向追加、反向缩小）；
+      // 否则以光标新建锚点，外部改动选区后自动走此分支
+      const main = view.state.selection.main;
+      if (this.selectAnchor === null || main.anchor !== this.selectAnchor || main.anchor === main.head) {
+        this.selectAnchor = main.head;
+      }
+      this.session.closePopup();
+      extendSelection(view, this.selectAnchor, delta);
+      return;
+    }
+    if (now - state.start >= this.plugin.settings.gamepadHoldDelay && now - state.last >= this.triggerInterval(depth)) {
+      state.last = now;
+      this.session.closePopup();
+      extendSelection(view, this.selectAnchor, delta);
+    }
+  }
+
+  /** 扳机动态间隔：深度归一化后线性映射，轻按 2 倍间隔、满按等于逐字基准 */
+  private triggerInterval(depth: number): number {
+    const threshold = this.plugin.settings.gamepadTriggerThreshold;
+    const normalized = Math.min(Math.max((depth - threshold) / (1 - threshold), 0), 1);
+    return Math.max(this.plugin.settings.gamepadCharInterval / (0.5 + 0.5 * normalized), TRIGGER_MIN_INTERVAL_MS);
   }
 
   /** 十字键分发：边沿立即触发，按住超阈值后连发，松开复位 */
@@ -189,6 +262,7 @@ class GamepadInputController {
     held: ReadonlySet<GamepadButtonName>,
     now: number,
     action: () => void,
+    timing?: { delay: number; interval: number },
   ): void {
     if (!held.has(name)) {
       this.dpadHoldStart.delete(name);
@@ -200,55 +274,51 @@ class GamepadInputController {
       action();
       return;
     }
+    const delay = timing?.delay ?? this.plugin.settings.gamepadHoldDelay;
+    const interval = timing?.interval ?? this.plugin.settings.gamepadDpadInterval;
     const start = this.dpadHoldStart.get(name) ?? now;
     const last = this.dpadLastFire.get(name) ?? 0;
-    if (now - start >= this.plugin.settings.gamepadDpadDelay && now - last >= this.plugin.settings.gamepadDpadInterval) {
+    if (now - start >= delay && now - last >= interval) {
       this.dpadLastFire.set(name, now);
       action();
     }
   }
 
-  /** 当前预设：逐帧读取，切换后下帧即生效 */
-  private currentPreset(): GamepadPreset {
-    return GAMEPAD_PRESETS[this.plugin.settings.gamepadPreset];
-  }
-
-  /** 十字键动作分流：span 切片段、candidate 切候选、char 单步一字 */
-  private dpadAction(role: GamepadDpadLRRole | GamepadDpadRole, delta: -1 | 1): void {
-    if (role === "span") this.navigateSpan(delta);
-    else if (role === "candidate") this.cycleCandidate(delta);
-    else this.nudgeCursor(delta);
-  }
-
-  /** 左右切高亮片段：先关已开浮层且不替换，再移动 */
+  /** 左右切高亮片段：无候选段时回退逐字（与键盘左右键同语义）；词库关闭不拦回退 */
   private navigateSpan(delta: -1 | 1): void {
-    if (!isLexiconEnabled() || this.isMouseMenuOpen()) return;
+    if (this.isMouseMenuOpen()) return;
     const view = this.resolveEditorView(true);
     if (view === null) return;
-    if (!this.session.ensure(view)) return;
+    if (isLexiconEnabled() && this.session.ensure(view)) {
+      this.session.closePopup();
+      this.session.moveActive(delta);
+      return;
+    }
     this.session.closePopup();
-    this.session.moveActive(delta);
+    moveCursorByChar(view, delta);
   }
 
-  /** 上下切候选：首次打开浮层预览，之后只动浮层高亮，确认前不写文档 */
+  /** 上下切候选：无候选段时回退视觉跳行（含折行，与键盘上下键同语义）；词库关闭不拦回退 */
   private cycleCandidate(delta: -1 | 1): void {
-    if (!isLexiconEnabled() || this.isMouseMenuOpen()) return;
+    if (this.isMouseMenuOpen()) return;
     const view = this.resolveEditorView(true);
     if (view === null) return;
-    if (!this.session.ensure(view)) return;
-    this.session.cyclePopup(delta);
+    if (isLexiconEnabled() && this.session.ensure(view)) {
+      this.session.cyclePopup(delta);
+      return;
+    }
+    this.session.closePopup();
+    moveCursorByLine(view, delta);
   }
 
-  /** 左摇杆：按预设角色分流光标移动或视口滚动，右摇杆取互补角色 */
-  private handleLeftStick(frame: GamepadFrame, now: number): void {
-    if (this.currentPreset().leftStick === "cursor") this.moveCursorByStick(frame.leftStick, now);
-    else this.scrollByStick(frame.leftStick);
+  /** 左摇杆滚动视口、右摇杆移动光标，角色固定互补 */
+  private handleLeftStick(frame: GamepadFrame): void {
+    this.scrollByStick(frame.leftStick);
   }
 
-  /** 右摇杆：角色与左摇杆互补 */
+  /** 右摇杆移动光标 */
   private handleRightStick(frame: GamepadFrame, now: number): void {
-    if (this.currentPreset().leftStick === "cursor") this.scrollByStick(frame.rightStick);
-    else this.moveCursorByStick(frame.rightStick, now);
+    this.moveCursorByStick(frame.rightStick, now);
   }
 
   /** 摇杆光标移动：X 逐字、Y 逐行，要求编辑器聚焦，避免焦点在别处时光标暗改 */
@@ -578,4 +648,26 @@ function moveCursorByLine(view: EditorView, delta: -1 | 1): void {
   const moved = view.moveVertically(view.state.selection.main, delta > 0);
   if (moved.head === view.state.selection.main.head) return;
   view.dispatch({ selection: { anchor: moved.head }, scrollIntoView: true });
+}
+
+// 逻辑行跳转：整段为单位、同列偏移保持并钳制到目标行尾，文档首尾无操作；
+// 与视觉行步进互补，长折行段落上一跳整段
+function moveCursorByLogicalLine(view: EditorView, delta: -1 | 1): void {
+  const doc = view.state.doc;
+  const head = view.state.selection.main.head;
+  const line = doc.lineAt(head);
+  const targetNumber = Math.min(Math.max(line.number + delta, 1), doc.lines);
+  if (targetNumber === line.number) return;
+  const target = doc.line(targetNumber);
+  const next = Math.min(target.from + (head - line.from), target.to);
+  if (next === head) return;
+  view.dispatch({ selection: { anchor: next }, scrollIntoView: true });
+}
+
+// 扩展选取：锚点固定、活动端按字步进，单次 dispatch；中途光标被别处移动时以当前位置为准
+function extendSelection(view: EditorView, anchor: number | null, delta: -1 | 1): void {
+  if (anchor === null) return;
+  const head = view.state.selection.main.head;
+  const next = Math.min(Math.max(head + delta, 0), view.state.doc.length);
+  view.dispatch({ selection: { anchor, head: next }, scrollIntoView: true });
 }

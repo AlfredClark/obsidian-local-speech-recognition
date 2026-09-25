@@ -43,7 +43,7 @@
 ├── src/
 │   ├── cores/               # 核心能力：跨功能共享的基础设施（模块三段式见代码规范）
 │   │   ├── audio-capture/   # 采集：麦克风枚举 + AudioWorklet 采集（worklet 源码内联）
-│   │   ├── gamepad/         # 手柄：标准映射轮询 + 死区/边沿归一化 + 预设键位登记表（单例，无 init）
+│   │   ├── gamepad/         # 手柄：标准映射轮询 + 死区/边沿归一化 + 扳机模拟量采样 + 固定键位映射（单例，无 init）
 │   │   ├── i18n/            # 国际化模块：手动实现的多语言支持
 │   │   │   └── locales/     # 语言资源目录（文件说明见核心能力）
 │   │   ├── lexicon/         # 词库：全局 IndexedDB + 仓库独立文件双后端 + 词条增删改查 + 导入导出格式 + 模糊音变体（见核心能力）
@@ -53,7 +53,7 @@
 │   │   └── sidebar/         # 侧边栏：自定义视图 + Svelte 页面
 │   │       └── components/  # Svelte 组件（SidebarRoot / LexiconPage / LexiconEntryForm / ServicePage）
 │   ├── features/            # 业务功能：用户可感知的具体功能
-│   │   ├── gamepad/         # 手柄输入：预设布局（录音/候选/光标/滚动角色）+ 浮层候选导航（见业务功能）
+│   │   ├── gamepad/         # 手柄输入：固定布局（Y录音/A确认换行/B取消退格/X撤销/LB-RB逻辑行/LT-RT扩展选取）+ 浮层候选导航（见业务功能）
 │   │   ├── lexicon/         # 词库：编辑器右键菜单添加选中文本 + 识别后处理高亮/替换（见业务功能）
 │   │   ├── sherpa-server/   # 服务编排：autoStart 拉起 + 退出/卸载回收（状态见业务功能）
 │   │   └── speech-recognition/ # 语音识别：命令注册 + 录音→识别→投递控制器（见业务功能）

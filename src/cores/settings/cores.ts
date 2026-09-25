@@ -3,9 +3,7 @@ import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
 import { isLexiconStorageMode, type LexiconStorageMode } from "./types";
 import { getSherpaServer } from "../sherpa-server";
-import { DEFAULT_GAMEPAD_DEADZONE, DEFAULT_GAMEPAD_PRESET_ID } from "../gamepad";
-import { describeGamepadButton, GAMEPAD_PRESETS, isGamepadPresetId } from "../gamepad";
-import type { GamepadPreset, GamepadPresetId } from "../gamepad";
+import { DEFAULT_GAMEPAD_DEADZONE } from "../gamepad";
 import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import { MicrophoneStore } from "./microphone-options";
@@ -28,16 +26,15 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   inputMode: "toggle",
   microphoneDeviceId: "",
   gamepadEnabled: false,
-  gamepadPreset: DEFAULT_GAMEPAD_PRESET_ID,
   gamepadDeadzone: DEFAULT_GAMEPAD_DEADZONE,
   gamepadScrollSpeed: 1,
   gamepadInvertScrollY: false,
   gamepadCharInterval: 60,
   gamepadLineInterval: 120,
-  gamepadDpadDelay: 400,
+  gamepadHoldDelay: 400,
   gamepadDpadInterval: 130,
-  gamepadBackspaceDelay: 400,
   gamepadBackspaceInterval: 60,
+  gamepadTriggerThreshold: 0.15,
   lexiconEnabled: true,
   lexiconStorage: "global",
   fuzzyMatchEnabled: false,
@@ -146,19 +143,16 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   if (!isLexiconStorageMode(settings.lexiconStorage)) {
     settings.lexiconStorage = "global";
   }
-  // 预设登记表条目可能被移除或改名：未知标识回退默认预设，避免下拉与映射落空
-  if (!isGamepadPresetId(settings.gamepadPreset)) {
-    settings.gamepadPreset = DEFAULT_GAMEPAD_PRESET_ID;
-  }
+  // 存量 gamepadPreset 字段静默忽略：已无读取方，下次存盘自然消失
   // 手柄调参钳制：手改 data.json 灌入非法值时回退默认，避免死区锁死或连发失速
   settings.gamepadDeadzone = clampNumber(settings.gamepadDeadzone, 0, 0.9, DEFAULT_GAMEPAD_DEADZONE);
   settings.gamepadScrollSpeed = clampNumber(settings.gamepadScrollSpeed, 0.1, 4, 1);
   settings.gamepadCharInterval = clampNumber(settings.gamepadCharInterval, 10, 1000, 60);
   settings.gamepadLineInterval = clampNumber(settings.gamepadLineInterval, 10, 1000, 120);
-  settings.gamepadDpadDelay = clampNumber(settings.gamepadDpadDelay, 0, 2000, 400);
+  settings.gamepadHoldDelay = clampNumber(settings.gamepadHoldDelay, 0, 2000, 400);
   settings.gamepadDpadInterval = clampNumber(settings.gamepadDpadInterval, 10, 1000, 130);
-  settings.gamepadBackspaceDelay = clampNumber(settings.gamepadBackspaceDelay, 0, 2000, 400);
   settings.gamepadBackspaceInterval = clampNumber(settings.gamepadBackspaceInterval, 10, 1000, 60);
+  settings.gamepadTriggerThreshold = clampNumber(settings.gamepadTriggerThreshold, 0, 0.9, 0.15);
   return settings;
 }
 
@@ -460,14 +454,10 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
-   * 手柄控制条目：启用开关、预设下拉、手感调参（死区/滚动/连发）与单行键位一览。
-   * 一览行经 render 自建紧凑网格（一键一项），重渲染时随预设实时刷新；
-   * update() 会在同一行重复调用 render，入口先清旧网格防叠加，返回清理函数供卸载回收。
+   * 手柄控制条目：启用开关与手感调参（死区/滚动/反转/连发时序/扳机阈值）。
    * 条目增减只改此处，容器形态由 collapsible 决定。
    */
   private getGamepadItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
-    // 显式标注预设类型：当前预设的上下轴同为 candidate，字面量收窄会误杀与 span 的比较
-    const preset: GamepadPreset = GAMEPAD_PRESETS[this.plugin.settings.gamepadPreset];
     const showMap = (): boolean => this.plugin.settings.gamepadEnabled;
     return [
       {
@@ -477,74 +467,6 @@ export class SettingsTab extends PluginSettingTab {
           type: "toggle",
           key: "gamepadEnabled",
           defaultValue: false,
-        },
-      },
-      {
-        name: t("settings.gamepadPreset"),
-        desc: t("settings.gamepadPresetDesc"),
-        visible: showMap,
-        control: {
-          type: "dropdown",
-          key: "gamepadPreset",
-          defaultValue: DEFAULT_GAMEPAD_PRESET_ID,
-          options: this.gamepadPresetOptions(),
-        },
-      },
-      {
-        name: t("settings.gamepadMapTitle"),
-        desc: this.gamepadPresetOptions()[this.plugin.settings.gamepadPreset],
-        visible: showMap,
-        render: (setting) => {
-          setting.settingEl.querySelectorAll(".lsr-gamepad-map").forEach((el) => el.remove());
-          // 网格挂到整行并换行独占一行，保证键位横向排布不被右侧控件列挤压
-          setting.settingEl.addClass("lsr-gamepad-map-row");
-          const grid = setting.settingEl.createDiv({ cls: "lsr-gamepad-map" });
-          // 行名与键帽均按当前预设派生：十字键左右三向、上下双向、摇杆双持各自落位
-          const spanUD = preset.dpadUpDown === "span";
-          const cursorLeft = preset.leftStick === "cursor";
-          const entries: Array<readonly [string, string[]]> = [
-            [t("settings.gamepadMapRecord"), [describeGamepadButton(preset.record)]],
-            [t("settings.gamepadMapConfirm"), [describeGamepadButton(preset.confirm)]],
-            [t("settings.gamepadMapCancel"), [describeGamepadButton(preset.cancel)]],
-          ];
-          // 换行与精确移动、上下段仅部分预设定制：未定义时不占一行
-          if (preset.newline !== undefined) {
-            entries.push([t("settings.gamepadMapNewline"), [describeGamepadButton(preset.newline)]]);
-          }
-          if (preset.cursorLeft !== undefined) {
-            entries.push([t("settings.gamepadMapCursorLeft"), [describeGamepadButton(preset.cursorLeft)]]);
-          }
-          if (preset.cursorRight !== undefined) {
-            entries.push([t("settings.gamepadMapCursorRight"), [describeGamepadButton(preset.cursorRight)]]);
-          }
-          if (preset.spanPrev !== undefined) {
-            entries.push([t("settings.gamepadMapSpanPrev"), [describeGamepadButton(preset.spanPrev)]]);
-          }
-          if (preset.spanNext !== undefined) {
-            entries.push([t("settings.gamepadMapSpanNext"), [describeGamepadButton(preset.spanNext)]]);
-          }
-          if (preset.dpadLeftRight === "char") {
-            entries.push([t("settings.gamepadMapCursorLeft"), ["←"]], [t("settings.gamepadMapCursorRight"), ["→"]]);
-          } else {
-            entries.push([
-              preset.dpadLeftRight === "span" ? t("settings.gamepadMapSpan") : t("settings.gamepadMapCandidate"),
-              ["←", "→"],
-            ]);
-          }
-          entries.push(
-            [spanUD ? t("settings.gamepadMapSpan") : t("settings.gamepadMapCandidate"), ["↑", "↓"]],
-            [t("settings.gamepadMapCursor"), [t(cursorLeft ? "settings.gamepadLeftStick" : "settings.gamepadRightStick")]],
-            [t("settings.gamepadMapScroll"), [t(cursorLeft ? "settings.gamepadRightStick" : "settings.gamepadLeftStick")]],
-          );
-          for (const [label, caps] of entries) {
-            const item = grid.createDiv({ cls: "lsr-gamepad-map-item" });
-            item.createSpan({ cls: "lsr-gamepad-map-label", text: label });
-            const capsEl = item.createDiv({ cls: "lsr-gamepad-map-caps" });
-            for (const cap of caps) capsEl.createEl("kbd", { cls: "lsr-gamepad-key", text: cap });
-          }
-          return () => {
-            grid.remove();
-          };
         },
       },
       {
@@ -593,9 +515,9 @@ export class SettingsTab extends PluginSettingTab {
           type: "slider",
           key: "gamepadCharInterval",
           defaultValue: 60,
-          min: 30,
-          max: 150,
-          step: 10,
+          min: 20,
+          max: 200,
+          step: 5,
           displayFormat: (value) => `${value} ms`,
         },
       },
@@ -607,22 +529,22 @@ export class SettingsTab extends PluginSettingTab {
           type: "slider",
           key: "gamepadLineInterval",
           defaultValue: 120,
-          min: 60,
-          max: 300,
+          min: 40,
+          max: 500,
           step: 10,
           displayFormat: (value) => `${value} ms`,
         },
       },
       {
-        name: t("settings.gamepadDpadDelay"),
-        desc: t("settings.gamepadDpadDelayDesc"),
+        name: t("settings.gamepadHoldDelay"),
+        desc: t("settings.gamepadHoldDelayDesc"),
         visible: showMap,
         control: {
           type: "slider",
-          key: "gamepadDpadDelay",
+          key: "gamepadHoldDelay",
           defaultValue: 400,
-          min: 200,
-          max: 800,
+          min: 100,
+          max: 1000,
           step: 50,
           displayFormat: (value) => `${value} ms`,
         },
@@ -635,23 +557,9 @@ export class SettingsTab extends PluginSettingTab {
           type: "slider",
           key: "gamepadDpadInterval",
           defaultValue: 130,
-          min: 60,
-          max: 300,
+          min: 40,
+          max: 400,
           step: 10,
-          displayFormat: (value) => `${value} ms`,
-        },
-      },
-      {
-        name: t("settings.gamepadBackspaceDelay"),
-        desc: t("settings.gamepadBackspaceDelayDesc"),
-        visible: showMap,
-        control: {
-          type: "slider",
-          key: "gamepadBackspaceDelay",
-          defaultValue: 400,
-          min: 200,
-          max: 800,
-          step: 50,
           displayFormat: (value) => `${value} ms`,
         },
       },
@@ -663,21 +571,27 @@ export class SettingsTab extends PluginSettingTab {
           type: "slider",
           key: "gamepadBackspaceInterval",
           defaultValue: 60,
-          min: 30,
-          max: 150,
-          step: 10,
+          min: 20,
+          max: 200,
+          step: 5,
           displayFormat: (value) => `${value} ms`,
         },
       },
+      {
+        name: t("settings.gamepadTriggerThreshold"),
+        desc: t("settings.gamepadTriggerThresholdDesc"),
+        visible: showMap,
+        control: {
+          type: "slider",
+          key: "gamepadTriggerThreshold",
+          defaultValue: 0.15,
+          min: 0.05,
+          max: 0.4,
+          step: 0.05,
+          displayFormat: (value) => `${Math.round(value * 100)}%`,
+        },
+      },
     ];
-  }
-
-  /** 预设下拉选项：展示名需翻译，新增预设时同步追加 */
-  private gamepadPresetOptions(): Record<GamepadPresetId, string> {
-    return {
-      standard: t("settings.gamepadPresetOptions.standard"),
-      shoulder: t("settings.gamepadPresetOptions.shoulder"),
-    };
   }
 
   /**

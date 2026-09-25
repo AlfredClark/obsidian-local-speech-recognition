@@ -1,7 +1,5 @@
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { GamepadButtonName, GamepadFrame, GamepadFrameHandler, GamepadStickState } from "./types";
-import { buildButtonMap } from "./presets";
-import type { GamepadPreset } from "./presets";
 
 /** 标准映射十字键索引：上 12、下 13、左 14、右 15，不随预设变化 */
 export const BUTTON_INDEX_DPAD_UP = 12;
@@ -13,17 +11,29 @@ export const AXIS_INDEX_LEFT_X = 0;
 export const AXIS_INDEX_LEFT_Y = 1;
 export const AXIS_INDEX_RIGHT_X = 2;
 export const AXIS_INDEX_RIGHT_Y = 3;
+/** 扳机索引：左 LT=6（后退）、右 RT=7（前进），标准映射固定位置 */
+export const BUTTON_INDEX_LT = 6;
+export const BUTTON_INDEX_RT = 7;
 
 /** 默认摇杆死区：低于此幅度的漂移视为 0，避免手柄回中不准导致光标自走 */
 export const DEFAULT_GAMEPAD_DEADZONE = 0.25;
 
-/** 按键索引到逻辑动作的映射；功能键随预设变化，十字键固定方向语义 */
-const DPAD_INDICES: readonly [number, number, number, number] = [
-  BUTTON_INDEX_DPAD_UP,
-  BUTTON_INDEX_DPAD_DOWN,
-  BUTTON_INDEX_DPAD_LEFT,
-  BUTTON_INDEX_DPAD_RIGHT,
-];
+/**
+ * 物理索引到逻辑动作的静态映射（固定键位：Y录音/A确认/B取消/X撤销/LB上行/RB下行，
+ * 十字键上/下/左/右固定方向语义；扳机走模拟量通道，不进此表）。
+ */
+const BUTTON_INDEX_TO_ACTION: ReadonlyMap<number, GamepadButtonName> = new Map([
+  [3, "record"],
+  [0, "confirm"],
+  [1, "cancel"],
+  [2, "undo"],
+  [4, "lineUp"],
+  [5, "lineDown"],
+  [BUTTON_INDEX_DPAD_UP, "dpadUp"],
+  [BUTTON_INDEX_DPAD_DOWN, "dpadDown"],
+  [BUTTON_INDEX_DPAD_LEFT, "dpadLeft"],
+  [BUTTON_INDEX_DPAD_RIGHT, "dpadRight"],
+]);
 
 /**
  * 摇杆死区过滤：幅度内归 0，之外保持符号并重归一化到 0..1。
@@ -39,10 +49,9 @@ export function applyDeadzone(value: number, deadzone: number = DEFAULT_GAMEPAD_
 }
 
 /**
- * 轮询输入配置：预设映射与死区阈值，feature 侧逐帧供给，设置页拖动下帧即生效。
+ * 轮询输入配置：死区阈值，feature 侧逐帧供给，设置页拖动下帧即生效。
  */
 export interface GamepadInputConfig {
-  preset: GamepadPreset;
   deadzone: number;
 }
 
@@ -73,10 +82,9 @@ export function startGamepadPolling(
     if (isActive()) {
       const input = resolveInput();
       const snapshot = readFirstGamepad(input.deadzone);
-      const buttonMap = buildButtonMap(input.preset, DPAD_INDICES);
       const pressed = new Set<GamepadButtonName>();
       const held = new Set<GamepadButtonName>();
-      for (const [index, name] of buttonMap) {
+      for (const [index, name] of BUTTON_INDEX_TO_ACTION) {
         const down = snapshot.buttons.get(index) === true;
         if (down) held.add(name);
         if (down && previous.get(name) !== true) pressed.add(name);
@@ -109,6 +117,7 @@ function readFirstGamepad(deadzone: number): GamepadSnapshot {
       connected: false,
       leftStick: { x: 0, y: 0 },
       rightStick: { x: 0, y: 0 },
+      triggers: { left: 0, right: 0 },
     },
     buttons: new Map(),
   };
@@ -137,5 +146,25 @@ function readFirstGamepad(deadzone: number): GamepadSnapshot {
     x: applyDeadzone(active.axes[AXIS_INDEX_RIGHT_X] ?? 0, deadzone),
     y: applyDeadzone(active.axes[AXIS_INDEX_RIGHT_Y] ?? 0, deadzone),
   };
-  return { frame: { connected: true, leftStick, rightStick }, buttons };
+  return { frame: { connected: true, leftStick, rightStick, triggers: readTriggers(active) }, buttons };
+}
+
+/**
+ * 采样扳机模拟量：value 0..1 原样透出（不经死区，执行层按阈值与深度调速）；
+ * 数字手柄无 value 时按 pressed 回退 0/1，满按即基准速度。
+ * @param pad 已连接的手柄
+ * @returns 左右扳机深度
+ */
+function readTriggers(pad: Gamepad): { left: number; right: number } {
+  return { left: readTriggerValue(pad, BUTTON_INDEX_LT), right: readTriggerValue(pad, BUTTON_INDEX_RT) };
+}
+
+/** 读取单个扳机深度并钳制到 0..1 */
+function readTriggerValue(pad: Gamepad, index: number): number {
+  const button = pad.buttons[index];
+  if (button === undefined || button === null) return 0;
+  if (typeof button.value === "number" && Number.isFinite(button.value)) {
+    return Math.min(Math.max(button.value, 0), 1);
+  }
+  return button.pressed ? 1 : 0;
 }
