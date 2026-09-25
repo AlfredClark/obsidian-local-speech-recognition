@@ -43,6 +43,7 @@
 ├── src/
 │   ├── cores/               # 核心能力：跨功能共享的基础设施（模块三段式见代码规范）
 │   │   ├── audio-capture/   # 采集：麦克风枚举 + AudioWorklet 采集（worklet 源码内联）
+│   │   ├── gamepad/         # 手柄：标准映射轮询 + 死区/边沿归一化 + 预设键位登记表（单例，无 init）
 │   │   ├── i18n/            # 国际化模块：手动实现的多语言支持
 │   │   │   └── locales/     # 语言资源目录（文件说明见核心能力）
 │   │   ├── lexicon/         # 词库：全局 IndexedDB + 仓库独立文件双后端 + 词条增删改查 + 导入导出格式 + 模糊音变体（见核心能力）
@@ -52,6 +53,7 @@
 │   │   └── sidebar/         # 侧边栏：自定义视图 + Svelte 页面
 │   │       └── components/  # Svelte 组件（SidebarRoot / LexiconPage / LexiconEntryForm / ServicePage）
 │   ├── features/            # 业务功能：用户可感知的具体功能
+│   │   ├── gamepad/         # 手柄输入：预设布局（录音/候选/光标/滚动角色）+ 浮层候选导航（见业务功能）
 │   │   ├── lexicon/         # 词库：编辑器右键菜单添加选中文本 + 识别后处理高亮/替换（见业务功能）
 │   │   ├── sherpa-server/   # 服务编排：autoStart 拉起 + 退出/卸载回收（状态见业务功能）
 │   │   └── speech-recognition/ # 语音识别：命令注册 + 录音→识别→投递控制器（见业务功能）
@@ -99,7 +101,7 @@
 - `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`，未知存储方式经 `isLexiconStorageMode` 归一化回 `global`
 - 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyLexiconStorageChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/存储方式/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeLexiconStorageChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
-- 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
+- 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）、手柄控制（`getGamepadItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
 - 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给 `service-actions.ts`/`lexicon-actions.ts` 的私有函数（`startService`/`stopService`/`restartService`/`testConnection`/`openSettings`/`exportLexicon`/`importLexicon`/`clearLexicon`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用；破坏性按钮经 `ButtonComponent.setDestructive()`（`setWarning()` 已废弃）
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 并经 `plugin.register` 托管退订；配置变更仅手动生效，不自动重启
 - 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示

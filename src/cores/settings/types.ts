@@ -1,4 +1,5 @@
 import type { PluginLanguage } from "../i18n";
+import type { GamepadPresetId } from "../gamepad";
 import type { SherpaModelId } from "../../utils/sherpa-process";
 
 /** 语音输入触发模式：toggle 单次点击切换，push-to-talk 按住说话 */
@@ -47,6 +48,10 @@ export interface LocalSpeechRecognitionPluginSettings {
   inputMode: SpeechInputMode;
   /** 语音输入麦克风设备 id；空字符串表示系统默认设备 */
   microphoneDeviceId: string;
+  /** 是否启用手柄：开启后可用手柄触发录音、移动光标与切换词库候选 */
+  gamepadEnabled: boolean;
+  /** 手柄预设键位：录音/确认/取消三功能键的映射布局 */
+  gamepadPreset: GamepadPresetId;
   /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
   lexiconEnabled: boolean;
   /** 词库存储方式：全局共享或仓库独立，两后端数据相互独立不互相同步 */

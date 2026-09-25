@@ -16,6 +16,17 @@ const MAX_RECORDING_SECONDS = 280;
 /** 16kHz 单声道每秒采样数：用于截断分片累积 */
 const SAMPLES_PER_SECOND_16K = 16000;
 
+/** 命令回调的全局触发器：供手柄等外部入口复用，状态机与 busy 提示保持单一入口 */
+let speechTrigger: (() => void) | null = null;
+
+/**
+ * 触发一次语音识别：等价于执行切换命令，未初始化或已卸载时静默返回。
+ * 由手柄输入等外部入口调用，不经过未公开的 app.commands API。
+ */
+export function requestSpeechRecognitionTrigger(): void {
+  speechTrigger?.();
+}
+
 /**
  * 初始化语音识别功能：注册语音识别命令（默认无快捷键，用户在设置→快捷键中绑定），
  * 按 inputMode 分流 toggle/push-to-talk。
@@ -37,7 +48,10 @@ export async function initSpeechRecognition(plugin: LocalSpeechRecognitionPlugin
   plugin.registerDomEvent(window, "keyup", (event: KeyboardEvent) => {
     controller.handleKeyUp(event);
   });
+  // 对外暴露触发器供手柄复用，卸载时同步注销避免悬空调用
+  speechTrigger = () => controller.handleTrigger();
   return () => {
+    speechTrigger = null;
     controller.dispose();
   };
 }

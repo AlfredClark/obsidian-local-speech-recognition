@@ -1,4 +1,5 @@
 import type LocalSpeechRecognitionPlugin from "../main";
+import { initGamepad } from "./gamepad";
 import { initLexicon } from "./lexicon";
 import { initSherpaServer } from "./sherpa-server";
 import { initSpeechRecognition } from "./speech-recognition";
@@ -15,6 +16,7 @@ export async function initFeatures(plugin: LocalSpeechRecognitionPlugin): Promis
   cleanups.push(await initSherpaServer(plugin));
   cleanups.push(await initSpeechRecognition(plugin));
   cleanups.push(await initLexicon(plugin));
+  cleanups.push(await initGamepad(plugin));
 }
 
 /** 卸载时依序回收各 feature 注册的资源（视图叶子、服务进程等），并排空队列以支持热重载重复 onload */
