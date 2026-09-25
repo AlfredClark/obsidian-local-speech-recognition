@@ -470,6 +470,40 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: t("settings.gamepadMapTitle"),
+        desc: t("settings.gamepadMapTitleDesc"),
+        visible: showMap,
+        render: (setting) => {
+          // render 可重复调用：先清旧节点再重建，防 DOM 叠加
+          setting.settingEl.querySelectorAll(".lsr-keymap").forEach((el) => el.remove());
+          // 键位固定（无预设），内容静态，仅文案走 t()，语言切换靠设置页重渲染跟随
+          const rows: Array<readonly [string[], string]> = [
+            [["Y"], t("settings.gamepadMapRecord")],
+            [["A"], t("settings.gamepadMapConfirm")],
+            [["B"], t("settings.gamepadMapCancel")],
+            [["X"], t("settings.gamepadMapUndo")],
+            [["LB", "RB"], t("settings.gamepadMapLine")],
+            [["LT", "RT"], t("settings.gamepadMapSelect")],
+            [["←", "→"], t("settings.gamepadMapDpadH")],
+            [["↑", "↓"], t("settings.gamepadMapDpadV")],
+            [[t("settings.gamepadLeftStick")], t("settings.gamepadMapScrollStick")],
+            [[t("settings.gamepadRightStick")], t("settings.gamepadMapMoveStick")],
+          ];
+          // 清空右侧控件列，一览占满整行宽
+          setting.controlEl.empty();
+          const grid = setting.settingEl.createDiv({ cls: "lsr-keymap" });
+          for (const [caps, label] of rows) {
+            const row = grid.createDiv({ cls: "lsr-keymap-row" });
+            const capsEl = row.createDiv({ cls: "lsr-keymap-caps" });
+            for (const cap of caps) capsEl.createEl("kbd", { cls: "lsr-kbd", text: cap });
+            row.createSpan({ cls: "lsr-keymap-label", text: label });
+          }
+          return () => {
+            grid.remove();
+          };
+        },
+      },
+      {
         name: t("settings.gamepadDeadzone"),
         desc: t("settings.gamepadDeadzoneDesc"),
         visible: showMap,

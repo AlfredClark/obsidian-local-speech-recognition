@@ -16,6 +16,7 @@ Offline speech recognition in Obsidian, powered by a locally deployed sherpa-onn
 - Service management: manual start/stop/restart, auto-start on plugin load, and a connection test.
 - Selectable recognition models: SenseVoice, FunASR and Paraformer families with int8/fp16/fp32 variants, each started with its own parameters (see [Supported models](#supported-models)).
 - Trilingual UI: English / 简体中文 / 繁體中文, following the Obsidian interface language or set manually.
+- Gamepad control (just for fun): drive recording, cursor, candidate picking and more with a standard-mapping controller (see [Gamepad control](#gamepad-control)).
 
 ## Requirements
 
@@ -127,6 +128,21 @@ Lexicon settings:
 | Fuzzy pinyin matching   | Also match words differing only in retroflex initials or front/back nasals (default off; see Lexicon below)            |
 | Export / Import / Clear | Back up to JSON, import from JSON or one-word-per-line text, or permanently delete every entry (hidden while disabled) |
 
+Gamepad settings (all hidden while the gamepad is disabled; see [Gamepad control](#gamepad-control)):
+
+| Setting                 | Description                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Enable gamepad          | Turn gamepad input on or off (default off)                                                                              |
+| Stick dead zone         | Ignore stick drift below this value (default 25%, range 0–50%)                                                          |
+| Scroll speed            | Viewport scroll multiplier (default ×1.0, range ×0.5–×2.0)                                                              |
+| Invert scroll direction | Flip the scroll stick vertically (default off)                                                                          |
+| Character step interval | Step interval for horizontal stick moves, also the full-press trigger baseline (default 60 ms, range 20–200 ms)         |
+| Line step interval      | Step interval for vertical stick moves and line jumps (default 120 ms, range 40–500 ms)                                 |
+| Hold repeat delay       | Shared initial delay before direction pad, line jump, backspace and triggers repeat (default 400 ms, range 100–1000 ms) |
+| Direction pad interval  | Repeat step interval while holding a direction pad direction (default 130 ms, range 40–400 ms)                          |
+| Backspace interval      | Repeat step interval while holding backspace (default 60 ms, range 20–200 ms)                                           |
+| Trigger threshold       | Trigger depth below this value counts as released (default 15%, range 5–40%)                                            |
+
 ## Usage notes
 
 - Toggle mode: press once to start, press again to stop and transcribe.
@@ -148,6 +164,29 @@ Notes:
 - An entry can be disabled instead of deleted; disabled entries are kept in the list but excluded from matching.
 - Assigning a **weight** ranks entries that share a pinyin, so higher-weight words appear first among the replacements.
 - Adding a word that already exists (same word and pinyin) is rejected with a Notice; homophones with different characters are allowed.
+
+## Gamepad control
+
+Just for fun: gamepad support is a playful extra, not a productivity feature. It assumes a standard-mapping controller (Xbox-style) on desktop and a focused Markdown editor in source mode; most actions stay silent when the editor is not focused. Enable it under **Settings → Gamepad settings → Enable gamepad** — a fixed key map for reference is shown right below the toggle.
+
+| Button      | Candidate popup open                                                              | Editing text (focused editor)                                                         |
+| ----------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Y           | Close the popup, then toggle recording                                            | Toggle recording (works unfocused; result goes to clipboard)                          |
+| A           | Confirm the highlighted candidate, stay put                                       | Insert a newline                                                                      |
+| B           | Dismiss the popup (single press, no repeat)                                       | Backspace, hold to repeat-delete                                                      |
+| X           | Close the popup and undo                                                          | Undo the last edit (single fire, no repeat)                                           |
+| LB / RB     | Close the popup, jump prev / next logical line (hold to repeat, column preserved) | Same as left                                                                          |
+| LT / RT     | Start or continue extending the selection backward / forward                      | Same as left; depth controls speed, release keeps the selection, reversing shrinks it |
+| D-pad ← / → | Switch to the prev / next candidate span                                          | Move by character (hold to repeat)                                                    |
+| D-pad ↑ / ↓ | Switch candidates inside the popup                                                | Jump visual lines incl. wrapped lines (hold to repeat)                                |
+| Left stick  | Scroll the viewport vertically (no focus needed)                                  | Same as left; speed and direction follow the scroll settings                          |
+| Right stick | X: move by character; Y: move by visual line                                      | Same as left                                                                          |
+
+Notes:
+
+- Triggers are analog: pressing deeper repeats faster, from twice the character interval down to the full-press baseline; below the trigger threshold counts as released.
+- Holding any repeating input first fires once, then repeats after the shared hold delay.
+- Editing actions (backspace, newline, undo, confirmed replacement) exit candidate navigation; pure cursor moves only close the popup.
 
 ## Troubleshooting
 

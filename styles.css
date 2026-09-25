@@ -45,6 +45,41 @@
   color: var(--text-accent);
 }
 
+/* 手柄键位一览：键帽 + 功能说明两列网格，占满设置行宽 */
+.lsr-keymap {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 2px 16px;
+  margin-top: 2px;
+}
+
+.lsr-keymap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.lsr-keymap-caps {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  min-width: 76px;
+}
+
+kbd.lsr-kbd {
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  white-space: nowrap;
+}
+
 .lsr-service-badge[data-status="running"] {
   color: var(--text-success);
 }
