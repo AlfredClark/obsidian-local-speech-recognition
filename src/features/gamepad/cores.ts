@@ -11,19 +11,7 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 import type { EditorView } from "@codemirror/view";
 import type { GamepadCandidateSpan } from "./types";
 
-/** 左摇杆逐字连发间隔：60ms 一字，手感接近键盘长按 */
-const STICK_CHAR_REPEAT_MS = 60;
-/** 左摇杆逐行连发间隔：行跳视觉跨度大，间隔放宽避免窜行 */
-const STICK_LINE_REPEAT_MS = 120;
-/** 十字键按住初次延时：短按单步，超过此阈值后连发 */
-const DPAD_REPEAT_DELAY_MS = 400;
-/** 十字键按住连发间隔 */
-const DPAD_REPEAT_INTERVAL_MS = 130;
-/** B 退格按住初次延时：与键盘长按删除手感对齐 */
-const BACKSPACE_REPEAT_DELAY_MS = 400;
-/** B 退格按住连发间隔：快于候选切换，接近键盘连删速度 */
-const BACKSPACE_REPEAT_INTERVAL_MS = 60;
-/** 右摇杆满偏时每帧滚动像素：60fps 下约 1300px/s */
+/** 满偏每帧滚动像素基数：乘以滚动倍率设置，60fps 满偏默认约 1300px/s */
 const SCROLL_PIXELS_PER_FRAME = 22;
 /** 手柄当前高亮片段的激活样式类：左右切换时跟随，退出导航即清除 */
 const ACTIVE_SPAN_CLASS = "lsr-target-active";
@@ -51,7 +39,11 @@ export async function initGamepad(plugin: LocalSpeechRecognitionPlugin): Promise
     plugin,
     (frame, pressed, held) => controller.handleFrame(frame, pressed, held),
     () => plugin.settings.gamepadEnabled,
-    () => GAMEPAD_PRESETS[plugin.settings.gamepadPreset],
+    // 预设与死区逐帧供给：设置页拖动下帧即生效，无需重启
+    () => ({
+      preset: GAMEPAD_PRESETS[plugin.settings.gamepadPreset],
+      deadzone: plugin.settings.gamepadDeadzone,
+    }),
   );
   return () => {
     stopPolling();
@@ -158,7 +150,10 @@ class GamepadInputController {
     }
     const start = this.dpadHoldStart.get("cancel") ?? now;
     const last = this.dpadLastFire.get("cancel") ?? 0;
-    if (now - start >= BACKSPACE_REPEAT_DELAY_MS && now - last >= BACKSPACE_REPEAT_INTERVAL_MS) {
+    if (
+      now - start >= this.plugin.settings.gamepadBackspaceDelay &&
+      now - last >= this.plugin.settings.gamepadBackspaceInterval
+    ) {
       this.dpadLastFire.set("cancel", now);
       this.deleteBackwardOnce(view);
     }
@@ -207,7 +202,7 @@ class GamepadInputController {
     }
     const start = this.dpadHoldStart.get(name) ?? now;
     const last = this.dpadLastFire.get(name) ?? 0;
-    if (now - start >= DPAD_REPEAT_DELAY_MS && now - last >= DPAD_REPEAT_INTERVAL_MS) {
+    if (now - start >= this.plugin.settings.gamepadDpadDelay && now - last >= this.plugin.settings.gamepadDpadInterval) {
       this.dpadLastFire.set(name, now);
       action();
     }
@@ -268,11 +263,11 @@ class GamepadInputController {
     if (view === null) return;
     // 光标移动使浮层锚点过期，先关浮层
     this.session.closePopup();
-    if (x !== 0 && now - this.lastCharFire >= STICK_CHAR_REPEAT_MS) {
+    if (x !== 0 && now - this.lastCharFire >= this.plugin.settings.gamepadCharInterval) {
       this.lastCharFire = now;
       moveCursorByChar(view, x > 0 ? 1 : -1);
     }
-    if (y !== 0 && now - this.lastLineFire >= STICK_LINE_REPEAT_MS) {
+    if (y !== 0 && now - this.lastLineFire >= this.plugin.settings.gamepadLineInterval) {
       this.lastLineFire = now;
       moveCursorByLine(view, y > 0 ? 1 : -1);
     }
@@ -285,7 +280,9 @@ class GamepadInputController {
     const view = this.resolveEditorView(false);
     if (view === null) return;
     this.session.closePopup();
-    view.scrollDOM.scrollBy(0, deltaY * SCROLL_PIXELS_PER_FRAME);
+    // 像素 = 基数 × 倍率 × 反转符号，反转仅作用于滚动轴
+    const direction = this.plugin.settings.gamepadInvertScrollY ? -1 : 1;
+    view.scrollDOM.scrollBy(0, deltaY * SCROLL_PIXELS_PER_FRAME * this.plugin.settings.gamepadScrollSpeed * direction);
   }
 
   /** 鼠标候选菜单打开时手柄让路：同片段双写会互相覆盖坐标 */

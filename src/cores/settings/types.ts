@@ -52,6 +52,24 @@ export interface LocalSpeechRecognitionPluginSettings {
   gamepadEnabled: boolean;
   /** 手柄预设键位：录音/确认/取消三功能键的映射布局 */
   gamepadPreset: GamepadPresetId;
+  /** 摇杆死区：低于此幅度的漂移视为 0，0~0.5 */
+  gamepadDeadzone: number;
+  /** 滚动速度倍率：乘以满偏每帧像素，0.5~2 */
+  gamepadScrollSpeed: number;
+  /** 是否反转滚动方向：仅作用于滚动轴，逐行方向保持绝对上下 */
+  gamepadInvertScrollY: boolean;
+  /** 逐字连发间隔毫秒：按住摇杆横向时的步进间隔，30~150 */
+  gamepadCharInterval: number;
+  /** 逐行连发间隔毫秒：按住摇杆纵向时的步进间隔，60~300 */
+  gamepadLineInterval: number;
+  /** 十字键初次延时毫秒：按住超此阈值后开始连发，200~800 */
+  gamepadDpadDelay: number;
+  /** 十字键连发间隔毫秒，60~300 */
+  gamepadDpadInterval: number;
+  /** 退格初次延时毫秒，200~800 */
+  gamepadBackspaceDelay: number;
+  /** 退格连发间隔毫秒，30~150 */
+  gamepadBackspaceInterval: number;
   /** 是否启用词库：关闭后停用编辑器集成、侧边栏词库页与词库管理动作 */
   lexiconEnabled: boolean;
   /** 词库存储方式：全局共享或仓库独立，两后端数据相互独立不互相同步 */

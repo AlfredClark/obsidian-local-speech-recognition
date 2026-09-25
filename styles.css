@@ -99,9 +99,18 @@ kbd.lsr-gamepad-key {
    @media not all 恒不匹配，运行时零副作用 */
 @media not all {
   :root {
+    --background-modifier-border: inherit;
+    --background-modifier-hover: inherit;
+    --background-primary: inherit;
+    --background-secondary: inherit;
+    --font-ui-small: inherit;
+    --font-ui-smaller: inherit;
+    --shadow-s: inherit;
     --text-accent: inherit;
+    --text-error: inherit;
+    --text-muted: inherit;
+    --text-normal: inherit;
     --text-success: inherit;
     --text-warning: inherit;
-    --text-error: inherit;
   }
 }
