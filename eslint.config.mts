@@ -38,6 +38,16 @@ export default defineConfig(
       },
     },
   },
+  {
+    files: ["**/*.{ts,cts,mts,tsx}"],
+    rules: {
+      // @typescript-eslint/only-throw-error 的类型判定依赖 obsidianmd 嵌套的 TS 5.4.5 程序，
+      // 在该程序下全部 throw new Error 被误报为非 Error（同规则配顶层 TS 6.0.3 即通过，已实证）。
+      // 暂退回其扩展的 base 规则，保证 throw 字面量仍被拦截；待上游工具链对齐后再恢复。
+      "@typescript-eslint/only-throw-error": "off",
+      "no-throw-literal": "error",
+    },
+  },
   // 关闭与 prettier 冲突的格式规则（须为最后一个 config 块）
   eslintConfigPrettier,
 );

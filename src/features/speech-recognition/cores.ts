@@ -17,7 +17,7 @@ const MAX_RECORDING_SECONDS = 280;
 const SAMPLES_PER_SECOND_16K = 16000;
 
 /**
- * 初始化语音识别功能：注册语音识别命令（默认无快捷键，用户在设置→快捷键中绑为 Alt+R），
+ * 初始化语音识别功能：注册语音识别命令（默认无快捷键，用户在设置→快捷键中绑定），
  * 按 inputMode 分流 toggle/push-to-talk。
  * 返回同步清理函数：录音中禁用插件时同步 stop，不等待识别返回。
  * @param plugin 插件实例；type-only 导入具体类，运行时无循环
@@ -33,7 +33,7 @@ export async function initSpeechRecognition(plugin: LocalSpeechRecognitionPlugin
     },
   });
   // push-to-talk 过渡语义：Obsidian hotkey 只给 keydown 回调、无 keyup，
-  // 松开 Alt+R 经全局 keyup 兜底停止；再按一次同样可停，等同 toggle 收尾。
+  // 松开 R/Alt 经全局 keyup 兜底停止；再按一次同样可停，等同 toggle 收尾。
   plugin.registerDomEvent(window, "keyup", (event: KeyboardEvent) => {
     controller.handleKeyUp(event);
   });
