@@ -83,6 +83,7 @@ export function transcribePcm16k(samples: Float32Array, config: SherpaClientConf
 
 /**
  * 提取识别文本：服务端回包为 JSON，text 缺失或解析失败时回退原文，保证投递/Notice 始终有内容。
+ * Qwen3-ASR 偶发 `language Cantonese<asr_text>` 前缀，写入前剥离，否则污染编辑器与词库匹配。
  * @param raw 服务端原始回包文本
  * @returns 识别文本
  */
@@ -91,10 +92,22 @@ function extractText(raw: string): string {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === "object" && parsed !== null && "text" in parsed) {
       const text = parsed.text;
-      if (typeof text === "string" && text !== "") return text;
+      if (typeof text === "string" && text !== "") return stripModelPrefix(text);
     }
-    return raw;
+    return stripModelPrefix(raw);
   } catch {
-    return raw;
+    return stripModelPrefix(raw);
   }
+}
+
+/** 模型输出前缀：Qwen3-ASR 的 text 偶带语言标记，正则锚定行首且须含 <asr_text> 才剥离 */
+const MODEL_PREFIX_PATTERN = /^language [^<]*<asr_text>/;
+
+/**
+ * 剥离模型输出前缀：命中才改写，未命中原文返回，避免误伤正常口述。
+ * @param text 待清洗的识别文本
+ * @returns 去前缀后的文本
+ */
+function stripModelPrefix(text: string): string {
+  return text.replace(MODEL_PREFIX_PATTERN, "");
 }

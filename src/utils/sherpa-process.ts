@@ -107,6 +107,37 @@ export const SHERPA_MODELS = {
       `--tokens=${modelDir}/tokens.txt`,
     ],
   },
+  /** Qwen3-ASR 0.6B 量化模型（int8）：官方包无 tokens.txt，起服不传 --tokens（已实测） */
+  "qwen3-asr-0.6b-int8": {
+    name: "Qwen3-ASR 0.6B (int8)",
+    buildArgs: ({ modelDir }: SherpaModelArgsContext) => [
+      `--qwen3-asr-conv-frontend=${modelDir}/conv_frontend.onnx`,
+      `--qwen3-asr-encoder=${modelDir}/encoder.int8.onnx`,
+      `--qwen3-asr-decoder=${modelDir}/decoder.int8.onnx`,
+      `--qwen3-asr-tokenizer=${modelDir}/tokenizer`,
+      // 生成预算显式取 512：默认值 128 会截断长句，上游麦克风示例亦用 512
+      `--qwen3-asr-max-total-len=512`,
+      `--qwen3-asr-max-new-tokens=512`,
+      `--qwen3-asr-temperature=1e-6`,
+      `--qwen3-asr-top-p=0.8`,
+      `--qwen3-asr-seed=42`,
+    ],
+  },
+  /** Qwen3-ASR 1.7B 量化模型（int8）：与 0.6B 包同构，仅展示名区分，日后精度分叉再拆参数 */
+  "qwen3-asr-1.7b-int8": {
+    name: "Qwen3-ASR 1.7B (int8)",
+    buildArgs: ({ modelDir }: SherpaModelArgsContext) => [
+      `--qwen3-asr-conv-frontend=${modelDir}/conv_frontend.onnx`,
+      `--qwen3-asr-encoder=${modelDir}/encoder.int8.onnx`,
+      `--qwen3-asr-decoder=${modelDir}/decoder.int8.onnx`,
+      `--qwen3-asr-tokenizer=${modelDir}/tokenizer`,
+      `--qwen3-asr-max-total-len=512`,
+      `--qwen3-asr-max-new-tokens=512`,
+      `--qwen3-asr-temperature=1e-6`,
+      `--qwen3-asr-top-p=0.8`,
+      `--qwen3-asr-seed=42`,
+    ],
+  },
 } as const satisfies Record<string, SherpaModelDefinition>;
 
 /** 模型标识联合类型，由登记表键推导；新增模型无需手改 */

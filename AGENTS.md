@@ -132,7 +132,7 @@
 - 退出释放：应用关闭不保证走插件 `onunload`，feature 层同时订阅 `workspace.on("quit")` 与窗口 `beforeunload`，双路径调用同步强杀的 `dispose()`（直接 SIGKILL，不等 SIGTERM 宽限回调）；插件禁用/卸载仍走 `stop()` 正常关闭流程
 - 失败详情翻译：`resolveDetail` 将 `settings.missingBinaryPath`/`settings.missingModelPath` 映射为 `t()` 文案，运行时错误（退出码/超时等）原文透出；`toServerConfig` 从最近一次 `plugin.settings` 组装配置
 - 模型登记表（`utils/sherpa-process.ts` 的 `SHERPA_MODELS`）：键为模型标识，条目含下拉展示名 `name`（模型专有名词，直接写字符串、不参与翻译）与该模型专属启动参数 `buildArgs`（每一项单独列出，不与其他模型共享数组）；`SherpaModelId` 由登记表键推导，`DEFAULT_SHERPA_MODEL_ID` 为默认项（`sense-voice-int8`），设置页「识别模型」下拉与 `SherpaServerConfig.modelType` 均出自此
-- 参数拼装（`buildSherpaArgs`）：`--port=` + `--num-threads=` + 所选模型条目的参数 + `--log-file=`；登记表现分三组且均经实测可用——SenseVoice（`--sense-voice-model` + `--sense-voice-use-itn=1` + `--tokens`，int8/全精度）、FunASR（`--funasr-nano-encoder-adaptor`/`-llm`/`-embedding`/`-tokenizer`，int8/fp16/fp32）、Paraformer（`--paraformer` + `--tokens`，int8/全精度）；新增模型只需在登记表追加条目，README 的「支持的模型」表格同步列出所需文件与特点
+- 参数拼装（`buildSherpaArgs`）：`--port=` + `--num-threads=` + 所选模型条目的参数 + `--log-file=`；登记表现分四组且均经实测可用——SenseVoice（`--sense-voice-model` + `--sense-voice-use-itn=1` + `--tokens`，int8/全精度）、FunASR（`--funasr-nano-encoder-adaptor`/`-llm`/`-embedding`/`-tokenizer`，int8/fp16/fp32）、Paraformer（`--paraformer` + `--tokens`，int8/全精度）、Qwen3-ASR（`--qwen3-asr-conv-frontend`/`-encoder`/`-decoder`/`-tokenizer` + 生成参数，0.6B/1.7B int8，无 `--tokens`；默认走 CPU，CUDA 需二进制与 cuDNN 版本匹配且 int8 无增益）；新增模型只需在登记表追加条目，README 的「支持的模型」表格同步列出所需文件与特点
 
 ### sherpa-client（识别客户端）
 

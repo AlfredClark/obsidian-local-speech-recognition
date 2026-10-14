@@ -14,7 +14,7 @@
 - 词库（针对中文设计）：经编辑器右键菜单添加词语；识别后命中的词语会加下划线，点击可替换为同音词。可选的模糊音匹配容忍平翘舌与前后鼻音差异。
 - 侧边栏视图（Ribbon 图标）：「词库管理」页管理词条，「服务管理」页控制服务。
 - 服务管理：手动启动/停止/重启、随插件自动启动、连接测试。
-- 可选的识别模型：SenseVoice、FunASR、Paraformer 三大家族，含 int8/fp16/fp32 多种精度，各自按专属参数启动（见[支持的模型](#支持的模型)）。
+- 可选的识别模型：SenseVoice、FunASR、Paraformer、Qwen3-ASR 四大家族，含 int8/fp16/fp32 多种精度，各自按专属参数启动（见[支持的模型](#支持的模型)）。
 - 三语界面：English / 简体中文 / 繁體中文，跟随 Obsidian 界面语言，也可手动指定。
 - 手柄控制（纯属娱乐）：用标准映射手柄驱动录音、光标、候选词选取等（见[手柄控制](#手柄控制)）。
 
@@ -58,23 +58,28 @@ sherpa-onnx 每次发布都会为桌面平台提供多个预编译包。按操�
 
 在**设置 → 服务设置 → 识别模型**中选择模型，并把**模型文件夹路径**指向解压出的文件夹。文件夹内须包含下表所列的文件，`test_wavs/` 等多余文件不影响使用。切换模型在下次服务启动时生效。
 
-| 识别模型          | 模型目录需包含                                                                            | 特点                                                                                                                              |
-| ----------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| SenseVoice (int8) | `model.int8.onnx`、`tokens.txt`                                                           | 默认模型。支持普通话、粤语、英语、日语、韩语，ITN 带来标点；体积小（约 230 MB）、速度快                                           |
-| SenseVoice        | `model.onnx`、`tokens.txt`                                                                | 同一模型的全精度版本（约 890 MB），精度略高，体积更大、速度更慢                                                                   |
-| FunASR (int8)     | `encoder_adaptor.int8.onnx`、`llm.int8.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | 以 Qwen3-0.6B 作解码器，识别精度最高；支持普通话（含 7 种方言、26 种口音）、英语、日语，也能识别歌词；体积大（约 950 MB）、速度慢 |
-| FunASR (fp16)     | `encoder_adaptor.int8.onnx`、`llm.fp16.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | FunASR 的 fp16 版本（约 1.5 GB），精度与体积介于 int8 与 fp32 之间                                                                |
-| FunASR (fp32)     | `encoder_adaptor.onnx`、`llm.fp32.onnx`、`llm.fp32.data`、`embedding.onnx`、`Qwen3-0.6B/` | FunASR 全精度版本（约 3.7 GB），最重；`llm.fp32.data` 必须与 `llm.fp32.onnx` 放在同一目录                                         |
-| Paraformer (int8) | `model.int8.onnx`、`tokens.txt`                                                           | 非自回归，速度最快（约 220 MB）；中文（部分版本含英文或粤语），输出无标点                                                         |
-| Paraformer        | `model.onnx`、`tokens.txt`                                                                | Paraformer 全精度版本（约 790 MB），该系列中体积最大                                                                              |
+| 识别模型              | 模型目录需包含                                                                            | 特点                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| SenseVoice (int8)     | `model.int8.onnx`、`tokens.txt`                                                           | 默认模型。支持普通话、粤语、英语、日语、韩语，ITN 带来标点；体积小（约 230 MB）、速度快                                           |
+| SenseVoice            | `model.onnx`、`tokens.txt`                                                                | 同一模型的全精度版本（约 890 MB），精度略高，体积更大、速度更慢                                                                   |
+| FunASR (int8)         | `encoder_adaptor.int8.onnx`、`llm.int8.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | 以 Qwen3-0.6B 作解码器，识别精度最高；支持普通话（含 7 种方言、26 种口音）、英语、日语，也能识别歌词；体积大（约 950 MB）、速度慢 |
+| FunASR (fp16)         | `encoder_adaptor.int8.onnx`、`llm.fp16.onnx`、`embedding.int8.onnx`、`Qwen3-0.6B/`        | FunASR 的 fp16 版本（约 1.5 GB），精度与体积介于 int8 与 fp32 之间                                                                |
+| FunASR (fp32)         | `encoder_adaptor.onnx`、`llm.fp32.onnx`、`llm.fp32.data`、`embedding.onnx`、`Qwen3-0.6B/` | FunASR 全精度版本（约 3.7 GB），最重；`llm.fp32.data` 必须与 `llm.fp32.onnx` 放在同一目录                                         |
+| Paraformer (int8)     | `model.int8.onnx`、`tokens.txt`                                                           | 非自回归，速度最快（约 220 MB）；中文（部分版本含英文或粤语），输出无标点                                                         |
+| Paraformer            | `model.onnx`、`tokens.txt`                                                                | Paraformer 全精度版本（约 790 MB），该系列中体积最大                                                                              |
+| Qwen3-ASR 0.6B (int8) | `conv_frontend.onnx`、`encoder.int8.onnx`、`decoder.int8.onnx`、`tokenizer/`              | LLM 架构，多语种、输出带标点（约 1 GB）。体积不大速度尚可，绕口令偶有错词；int8 建议用 CPU（见下注）                              |
+| Qwen3-ASR 1.7B (int8) | `conv_frontend.onnx`、`encoder.int8.onnx`、`decoder.int8.onnx`、`tokenizer/`              | 与 0.6B 同布局（约 2.4 GB）。常规语音精度更高但更慢，极端复读文本可能截断；int8 建议用 CPU（见下注）                              |
 
-`Qwen3-0.6B/` 是分词器文件夹而非单个文件。与上表对应的压缩包（均在 ASR models 发布页）：
+`tokenizer/` 与 FunASR 的 `Qwen3-0.6B/` 都是分词器文件夹而非单个文件。与上表对应的压缩包（均在 ASR models 发布页）：
 
 - **SenseVoice**：`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`（同时含 `model.onnx` 与 `model.int8.onnx`），或 `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17`（仅 int8）。
 - **FunASR**：`sherpa-onnx-funasr-nano-int8-2025-12-30`、`sherpa-onnx-funasr-nano-fp16-2025-12-30`，fp32 为 `sherpa-onnx-funasr-nano-2025-12-30`。
 - **Paraformer**：`sherpa-onnx-paraformer-zh-2024-03-09` 等同系列压缩包——`-zh-small-2024-03-09` 最小，`-trilingual-zh-cantonese-en` 支持粤语，`-zh-int8-2025-10-07` 面向川渝方言；其中 small 与川渝版本仅提供 `model.int8.onnx`，请搭配「Paraformer (int8)」使用。
+- **Qwen3-ASR**：0.6B 用 `sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25`；1.7B 暂无官方 int8 包，需按 0.6B 包的同名布局，从 ModelScope `zengshuishui/Qwen3-ASR-onnx` 的 `model_1.7B` 目录自行拼装。
 
 > 注意：同一架构的模型若文件名不同，理论上可通过修改文件名强行运行，但该做法不保证成功。
+
+> 注意：Qwen3-ASR 默认走 CPU 即可。CUDA 仅在服务端二进制与 cuDNN 版本匹配时可用——如系统包带的二进制要求 cuDNN 8，在 cuDNN 9 的机器上会启动即崩溃，而版本匹配的构建运行正常。int8 模型用 CPU 一样快甚至更快，CUDA 并无增益。
 
 ## 安装
 
