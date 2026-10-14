@@ -113,6 +113,12 @@ const en = {
     },
     fuzzyMatch: "Fuzzy pinyin matching",
     fuzzyMatchDesc: "Also treat retroflex and nasal confusions as identical",
+    lexiconReplaceMode: "Replace mode",
+    lexiconReplaceModeDesc: "Whether transcription inserts the original text or the preferred lexicon word",
+    lexiconReplaceModeOptions: {
+      original: "Prefer original text",
+      lexicon: "Prefer lexicon replacement",
+    },
     lexiconExport: "Export lexicon",
     lexiconExportDesc: "Save all entries to a JSON file",
     lexiconImport: "Import lexicon",

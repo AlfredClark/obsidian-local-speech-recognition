@@ -407,8 +407,8 @@ class CandidateNavigator {
   }
 
   /**
-   * 从 .target-word 高亮重建会话：候选检索与鼠标菜单同口径（精确+模糊双表、排除当前文本），
-   * 无候选的片段直接跳过，保持导航列表与可替换项一致。
+   * 从 .target-word 高亮重建会话：候选检索与鼠标菜单同口径（精确+模糊双表、排除当前文本，
+   * 识别原文固定放在最后兜底），无候选的片段直接跳过，保持导航列表与可替换项一致。
    */
   rebuild(view: EditorView): boolean {
     // 重建后旧坐标与 DOM 引用失效，已开浮层一并关闭
@@ -447,8 +447,13 @@ class CandidateNavigator {
           }
         }
       }
+      // 原文兜底：与鼠标菜单同口径，装饰上的识别原文不在候选中时固定放在最后
+      const storedOriginal = el.getAttribute("data-original") ?? "";
+      if (storedOriginal !== "" && storedOriginal !== current && !candidates.includes(storedOriginal)) {
+        candidates.push(storedOriginal);
+      }
       if (candidates.length === 0) continue;
-      this.spans.push({ from, to, keys, original: current, candidates, el });
+      this.spans.push({ from, to, keys, original: storedOriginal !== "" ? storedOriginal : current, candidates, el });
     }
     this.spans.sort((a, b) => a.from - b.from);
     if (this.spans.length === 0) return false;

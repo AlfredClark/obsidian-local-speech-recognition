@@ -216,6 +216,7 @@ const targetField = StateField.define<DecorationSet>({
             class: "target-word",
             attributes: {
               "data-keys": target.keys.join(","),
+              "data-original": target.original,
             },
           }).range(target.from, target.to),
         );
@@ -246,17 +247,13 @@ const targetClickHandler = EditorView.domEventHandlers({
 });
 
 /**
- * 打开候选词菜单：候选来自片段命中拼音键对应的最新词库映射，排除与当前文本相同的词；
- * 无候选时不弹菜单。选中后经 CM6 单事务替换并清除该处高亮。
- * @param view 编辑器视图
- * @param el 高亮片段 DOM
- * @param event 触发点击事件，菜单定位用
+ * 按拼音键取候选词：精确映射优先、模糊映射随后，同表内保持权重降序；
+ * 排除当前文本并去重。鼠标菜单与手柄导航共用此口径。
+ * @param keys 片段命中的拼音键
+ * @param current 当前文本，需从候选中排除
+ * @returns 去重后的候选词列表
  */
-function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void {
-  const keys = (el.getAttribute("data-keys") ?? "").split(",").filter((key) => key !== "");
-  const from = view.posAtDOM(el);
-  const to = view.posAtDOM(el, el.childNodes.length);
-  const current = view.state.sliceDoc(from, to);
+function getCandidatesForKeys(keys: string[], current: string): string[] {
   // key 可能来自精确映射或模糊映射（data-keys 不区分来源），两张表都查并合并候选
   const maps = [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()];
   const candidates: string[] = [];
@@ -267,6 +264,43 @@ function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void 
       }
     }
   }
+  return candidates;
+}
+
+/**
+ * 按拼音键取首选词：与候选口径同序（精确优先、同表权重降序），不排除任何词；
+ * 多键片段取首个非空结果。供优先词库模式决定替换显示用。
+ * @param keys 片段命中的拼音键
+ * @returns 首选词，无映射时返回 null
+ */
+function getPreferredWord(keys: string[]): string | null {
+  const maps = [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()];
+  for (const key of keys) {
+    for (const map of maps) {
+      for (const word of map.get(key) ?? []) {
+        return word;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 打开候选词菜单：候选来自片段命中拼音键对应的最新词库映射，排除与当前文本相同的词，
+ * 识别原文固定放在最后一项兜底；无候选时不弹菜单。选中后经 CM6 单事务替换并清除该处高亮。
+ * @param view 编辑器视图
+ * @param el 高亮片段 DOM
+ * @param event 触发点击事件，菜单定位用
+ */
+function openTargetMenu(view: EditorView, el: Element, event: MouseEvent): void {
+  const keys = (el.getAttribute("data-keys") ?? "").split(",").filter((key) => key !== "");
+  const from = view.posAtDOM(el);
+  const to = view.posAtDOM(el, el.childNodes.length);
+  const current = view.state.sliceDoc(from, to);
+  const candidates = getCandidatesForKeys(keys, current);
+  // 原文兜底：优先词库模式下当前文本已是词库词，原文不在映射中，需固定放在最后以便找回
+  const original = el.getAttribute("data-original") ?? "";
+  if (original !== "" && original !== current && !candidates.includes(original)) candidates.push(original);
   if (candidates.length === 0) return;
   const menu = new Menu();
   for (const word of candidates) {
@@ -334,7 +368,49 @@ export function findTargets(text: string, baseFrom: number): LexiconTarget[] {
   for (const span of sorted) {
     if (span.start < lastEnd) continue;
     lastEnd = span.end;
-    result.push({ from: baseFrom + span.start, to: baseFrom + span.end, keys: [...span.keys] });
+    result.push({
+      from: baseFrom + span.start,
+      to: baseFrom + span.end,
+      keys: [...span.keys],
+      original: text.slice(span.start, span.end),
+    });
   }
   return result;
+}
+
+/**
+ * 按替换模式生成实际插入文本：每个命中片段取首选候选词替换原文，无候选则保留原文；
+ * 同步重映射高亮坐标，keys 与 original 透传供后续菜单使用。targets 须互不重叠且按起点升序。
+ * @param text 本次识别原文
+ * @param baseFrom 文本在文档中的起始位置
+ * @param targets findTargets 在原文上扫出的命中片段
+ * @returns 显示文本与重映射后的高亮目标
+ */
+export function applyPreferredReplacements(
+  text: string,
+  baseFrom: number,
+  targets: LexiconTarget[],
+): { displayText: string; remappedTargets: LexiconTarget[] } {
+  if (targets.length === 0) return { displayText: text, remappedTargets: targets };
+  // 按起点排序后顺序拼接：替换改长度，后续坐标按累计差值重算
+  const sorted = [...targets].sort((a, b) => a.from - b.from);
+  let displayText = "";
+  const remappedTargets: LexiconTarget[] = [];
+  let cursor = 0;
+  for (const target of sorted) {
+    const start = target.from - baseFrom;
+    const end = target.to - baseFrom;
+    // 坐标非法或重叠时跳过：保留原文对应区间，不破坏其余替换
+    if (start < cursor || end <= start || start < 0 || end > text.length) continue;
+    displayText += text.slice(cursor, start);
+    const segment = text.slice(start, end);
+    // 首选含原文自身：已是权重首项时保持原文，避免把正确结果换成次选
+    const preferred = getPreferredWord(target.keys) ?? segment;
+    const insertFrom = baseFrom + displayText.length;
+    displayText += preferred;
+    remappedTargets.push({ from: insertFrom, to: insertFrom + preferred.length, keys: target.keys, original: segment });
+    cursor = end;
+  }
+  displayText += text.slice(cursor);
+  return { displayText, remappedTargets };
 }

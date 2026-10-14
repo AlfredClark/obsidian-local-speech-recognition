@@ -8,7 +8,7 @@ import { int16ToFloat32Normalized, mergeInt16Chunks } from "../../utils/audio";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
-import { findTargets, setTargetsEffect } from "../lexicon";
+import { applyPreferredReplacements, findTargets, setTargetsEffect } from "../lexicon";
 
 /** 超长录音强制截断秒数：服务端 max-utterance-length 默认 300 秒，客户端提前截断避免被拒连 */
 const MAX_RECORDING_SECONDS = 280;
@@ -209,11 +209,18 @@ class SpeechController {
       if (cmView !== null) {
         try {
           const { from, to } = cmView.state.selection.main;
-          const targets = findTargets(text, from);
+          // 替换模式：词库优先时按权重首选词改写插入文本，高亮坐标同步重映射
+          let insertText = text;
+          let targets = findTargets(text, from);
+          if (this.plugin.settings.lexiconReplaceMode === "lexicon" && targets.length > 0) {
+            const applied = applyPreferredReplacements(text, from, targets);
+            insertText = applied.displayText;
+            targets = applied.remappedTargets;
+          }
           cmView.dispatch({
-            changes: { from, to, insert: text },
+            changes: { from, to, insert: insertText },
             // selection: { anchor: from, head: from + text.length },   // 自动选中输入文本
-            selection: { anchor: from + text.length }, // 光标自动移动到末尾
+            selection: { anchor: from + insertText.length }, // 光标自动移动到末尾
             effects: [setTargetsEffect.of(targets)],
             scrollIntoView: true,
           });
@@ -221,21 +228,34 @@ class SpeechController {
           return;
         } catch {
           // dispatch 失败回退 Obsidian 编辑器 API，保证本次结果仍可落盘
-          editor.replaceSelection(text);
+          editor.replaceSelection(this.resolveInsertText(text));
           new Notice(t("recognition.transcribed"), 3000);
           return;
         }
       }
-      editor.replaceSelection(text);
+      editor.replaceSelection(this.resolveInsertText(text));
       new Notice(t("recognition.transcribed"), 3000);
       return;
     }
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(this.resolveInsertText(text));
       new Notice(t("recognition.transcribedToClipboard"), 5000);
     } catch (error) {
       new Notice(t("recognition.clipboardFailed", { detail: this.toErrorDetail(error) }), 5000);
     }
+  }
+
+  /**
+   * 无高亮路径的插入文本：回退与剪贴板无装饰可挂，仍需尊重替换偏好；
+   * 此处用 0 作扫描基址，只取改写后的文本丢弃坐标。
+   * @param text 识别原文
+   * @returns 实际应插入的文本
+   */
+  private resolveInsertText(text: string): string {
+    if (this.plugin.settings.lexiconReplaceMode !== "lexicon") return text;
+    const targets = findTargets(text, 0);
+    if (targets.length === 0) return text;
+    return applyPreferredReplacements(text, 0, targets).displayText;
   }
 
   /**

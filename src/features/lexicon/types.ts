@@ -5,4 +5,6 @@ export interface LexiconTarget {
   from: number;
   to: number;
   keys: string[];
+  /** 该片段的识别原文；优先词库模式下替换后仍以此作菜单最后一项兜底 */
+  original: string;
 }

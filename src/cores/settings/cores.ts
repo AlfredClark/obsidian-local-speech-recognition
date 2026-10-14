@@ -1,7 +1,7 @@
 import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
-import { isLexiconStorageMode, type LexiconStorageMode } from "./types";
+import { isLexiconReplaceMode, isLexiconStorageMode, type LexiconStorageMode } from "./types";
 import { getSherpaServer } from "../sherpa-server";
 import { DEFAULT_GAMEPAD_DEADZONE } from "../gamepad";
 import { notifyLanguageChange, t } from "../i18n";
@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   lexiconEnabled: true,
   lexiconStorage: "global",
   fuzzyMatchEnabled: false,
+  lexiconReplaceMode: "original",
 };
 
 /** 词库开关变更订阅回调集合；设置页写入后广播，词库 feature 与侧边栏据此启停 */
@@ -142,6 +143,10 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   // 旧版本 data.json 无存储方式字段：未知标识回退全局，保持存量行为不变
   if (!isLexiconStorageMode(settings.lexiconStorage)) {
     settings.lexiconStorage = "global";
+  }
+  // 旧版本 data.json 无替换模式字段：未知标识回退原文优先，保持存量行为不变
+  if (!isLexiconReplaceMode(settings.lexiconReplaceMode)) {
+    settings.lexiconReplaceMode = "original";
   }
   // 存量 gamepadPreset 字段静默忽略：已无读取方，下次存盘自然消失
   // 手柄调参钳制：手改 data.json 灌入非法值时回退默认，避免死区锁死或连发失速
@@ -668,6 +673,21 @@ export class SettingsTab extends PluginSettingTab {
           type: "toggle",
           key: "fuzzyMatchEnabled",
           defaultValue: false,
+        },
+      },
+      {
+        name: t("settings.lexiconReplaceMode"),
+        desc: t("settings.lexiconReplaceModeDesc"),
+        // 词库关闭时不显示：该选项仅决定识别后处理的显示偏好，无词库时无意义
+        visible: () => this.plugin.settings.lexiconEnabled,
+        control: {
+          type: "dropdown",
+          key: "lexiconReplaceMode",
+          defaultValue: "original",
+          options: {
+            original: t("settings.lexiconReplaceModeOptions.original"),
+            lexicon: t("settings.lexiconReplaceModeOptions.lexicon"),
+          },
         },
       },
       {

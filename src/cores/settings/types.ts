@@ -18,6 +18,18 @@ export function isLexiconStorageMode(value: unknown): value is LexiconStorageMod
   return value === "global" || value === "vault";
 }
 
+/** 替换模式：original 优先显示识别原文，lexicon 优先显示词库首选词 */
+export type LexiconReplaceMode = "original" | "lexicon";
+
+/**
+ * 替换模式守卫：旧版本或手改 data.json 出现未知标识时回退默认，保持存量行为不变。
+ * @param value 待校验的值
+ * @returns 是否为合法的替换模式标识
+ */
+export function isLexiconReplaceMode(value: unknown): value is LexiconReplaceMode {
+  return value === "original" || value === "lexicon";
+}
+
 /**
  * 插件设置结构。声明式设置 API 按 key 直接读写此结构，
  * 新增字段须同步在 DEFAULT_SETTINGS 补默认值。
@@ -73,4 +85,6 @@ export interface LocalSpeechRecognitionPluginSettings {
   lexiconStorage: LexiconStorageMode;
   /** 是否启用模糊音匹配：开启后平翘舌与前后鼻音的差异也视为命中，关闭时仅精确同音 */
   fuzzyMatchEnabled: boolean;
+  /** 替换模式：决定识别结果写入编辑器时优先显示原文还是词库首选词 */
+  lexiconReplaceMode: LexiconReplaceMode;
 }
