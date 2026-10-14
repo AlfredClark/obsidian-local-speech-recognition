@@ -24,6 +24,7 @@
   "scripts": {
     "dev": "bun esbuild.config.ts",
     "build": "tsc -noEmit -skipLibCheck && bun scripts/svelte-check.ts && bun esbuild.config.ts production",
+    "test": "bun test --preload ./tests/setup.ts tests",
     "lint": "eslint .",
     "format": "prettier --write . && stylelint \"**/*.css\" --fix",
     "format:check": "prettier --check . && stylelint \"**/*.css\"",

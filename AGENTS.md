@@ -26,6 +26,7 @@
 | ---------------------- | ------------------------------------------------------ |
 | `bun run dev`          | 监听 src 与静态资源（100ms 防抖）→ 构建并同步 dist     |
 | `bun run build`        | tsc 类型检查 + svelte-check + 生产构建 + 同步 dist     |
+| `bun run test`         | bun 原生单测（tests/，经 setup.ts 预置 obsidian stub） |
 | `bun run lint`         | ESLint 检查（提交前必须零错误）                        |
 | `bun run format`       | Prettier + stylelint 格式化全部代码                    |
 | `bun run format:check` | Prettier + stylelint 检查（提交前必须通过）            |
@@ -40,6 +41,7 @@
 ├── dist/                    # 构建产物副本（gitignore，可 link 至 vault）
 ├── docs/                    # 文档（README 简体中文版；根 README 为英文版）
 ├── scripts/                 # 构建辅助脚本（不得被插件运行时引用）
+├── tests/                   # 单元测试（bun:test，setup.ts 预置 obsidian stub；tsc/eslint 全覆盖）
 ├── src/
 │   ├── cores/               # 核心能力：跨功能共享的基础设施（模块三段式见代码规范）
 │   │   ├── audio-capture/   # 采集：麦克风枚举 + AudioWorklet 采集（worklet 源码内联）
@@ -196,7 +198,7 @@
 - `ambient.d.ts`：`*.svelte` 模块声明，tsc 层放宽 props 类型，精确类型由 svelte-check 校验（build 命令内执行）；不与 `svelte.ts` 同名——TS 对同名 .ts/.d.ts 只保留 .ts，且模块文件内 `declare module` 会被视为模块增强而非法
 - `audio.ts`：识别管线纯函数与常量——`TARGET_SAMPLE_RATE`(16k)/`WS_CHUNK_BYTES`(10240)/`CAPTURE_BUFFER_SIZE`(4096)，`downsampleFloat32Mono`（线性重采样）、`float32ToInt16Pcm`、`int16ToFloat32Normalized`、`mergeInt16Chunks`（合并分片）、`buildOfflineWsPayload`（组装 8 字节头 + float32 LE 请求体）
 - `cm-utils.ts`：`getCodeMirrorEditorView(editor)` 鸭子类型取 CM6 `EditorView`；`@codemirror/view` 外部化，仅 `import type` 零运行时成本，运行时逐层校验 `cm`/`dispatch`/`state`/`selection`/`main`/`from`/`to` 形态，不符返回 `null`
-- `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "consecutive" }`（无声调、ü→v、非汉字连续段原样保留），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
+- `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "removed" }`（无声调、ü→v、非汉字移除），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
 - `sherpa-process.ts`：纯函数与模型登记表（`SHERPA_MODELS` 各条目逐项列出模型专属参数，`SherpaModelId` 由键推导、`DEFAULT_SHERPA_MODEL_ID` 兜底；参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
 - `.svelte` 组件文件属于模块特有文件，置于所属模块目录下（如 `cores/sidebar/components/`），不受三段式约束
 

@@ -20,6 +20,7 @@ jobs:
           filters: |
             code:
               - 'src/**'
+              - 'tests/**'
               - 'scripts/**'
               - '**/*.css'
               - 'esbuild.config.ts'

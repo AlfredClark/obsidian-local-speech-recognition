@@ -1,5 +1,5 @@
 import { type Editor, type EventRef, Menu, Notice } from "obsidian";
-import { match } from "pinyin-pro";
+import { collectCandidates, pickPreferred, scanTargets } from "./target-scan";
 import {
   addLexiconEntry,
   addLexiconEntryToStorage,
@@ -22,15 +22,6 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import type { LexiconTarget } from "./types";
-
-/**
- * 拼音匹配选项：every + lastPrecision every 保证整词严格命中（西安→xian 而不把「先」的尾音并入），
- * continuous 保证汉字下标连续，v 允许拼音 v 匹配 ü（词库存储格式已做 ü→v）。
- */
-const MATCH_OPTIONS = { precision: "every", lastPrecision: "every", continuous: true, v: true } as const;
-
-/** 片段必须是纯汉字：match 会把拉丁字符逐字母当拼音匹配（如 xiang 中命中 xian），需过滤 */
-const HAN_ONLY = /^\p{Script=Han}+$/u;
 
 /**
  * 初始化词库功能：按「启用词库」开关动态挂载编辑器集成——
@@ -254,17 +245,7 @@ const targetClickHandler = EditorView.domEventHandlers({
  * @returns 去重后的候选词列表
  */
 function getCandidatesForKeys(keys: string[], current: string): string[] {
-  // key 可能来自精确映射或模糊映射（data-keys 不区分来源），两张表都查并合并候选
-  const maps = [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()];
-  const candidates: string[] = [];
-  for (const key of keys) {
-    for (const map of maps) {
-      for (const word of map.get(key) ?? []) {
-        if (word !== current && !candidates.includes(word)) candidates.push(word);
-      }
-    }
-  }
-  return candidates;
+  return collectCandidates(keys, current, [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()]);
 }
 
 /**
@@ -274,15 +255,7 @@ function getCandidatesForKeys(keys: string[], current: string): string[] {
  * @returns 首选词，无映射时返回 null
  */
 function getPreferredWord(keys: string[]): string | null {
-  const maps = [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()];
-  for (const key of keys) {
-    for (const map of maps) {
-      for (const word of map.get(key) ?? []) {
-        return word;
-      }
-    }
-  }
-  return null;
+  return pickPreferred(keys, [getEnabledPinyinMap(), getEnabledFuzzyPinyinMap()]);
 }
 
 /**
@@ -334,48 +307,7 @@ export function findTargets(text: string, baseFrom: number): LexiconTarget[] {
   // 模糊开启时并入模糊映射：同一片段可被两种映射命中，按坐标合并 keys
   const maps: ReadonlyMap<string, readonly string[]>[] = [getEnabledPinyinMap()];
   if (isFuzzyMatchEnabled()) maps.push(getEnabledFuzzyPinyinMap());
-  const spans = new Map<string, { start: number; end: number; keys: Set<string> }>();
-  for (const map of maps) {
-    for (const [key, words] of map) {
-      let offset = 0;
-      while (offset < text.length) {
-        const indices = match(text.slice(offset), key, MATCH_OPTIONS);
-        if (indices === null || indices.length === 0) break;
-        const first = indices[0];
-        const last = indices[indices.length - 1];
-        if (first === undefined || last === undefined) break;
-        const start = offset + first;
-        const end = offset + last + 1;
-        offset = end;
-        const segment = text.slice(start, end);
-        if (!HAN_ONLY.test(segment)) continue;
-        // 无替代项：拼音成功匹配、词库中该拼音只有唯一候选、且候选与文本汉字完全一致时跳过，
-        // 此时点击也没有其他词可选，高亮只会在正确的识别结果上产生无意义标记
-        if (words.length === 1 && words[0] === segment) continue;
-        const id = `${start},${end}`;
-        const existing = spans.get(id);
-        if (existing === undefined) {
-          spans.set(id, { start, end, keys: new Set([key]) });
-        } else {
-          existing.keys.add(key);
-        }
-      }
-    }
-  }
-  const sorted = [...spans.values()].sort((a, b) => a.start - b.start || b.end - a.end);
-  const result: LexiconTarget[] = [];
-  let lastEnd = -1;
-  for (const span of sorted) {
-    if (span.start < lastEnd) continue;
-    lastEnd = span.end;
-    result.push({
-      from: baseFrom + span.start,
-      to: baseFrom + span.end,
-      keys: [...span.keys],
-      original: text.slice(span.start, span.end),
-    });
-  }
-  return result;
+  return scanTargets(text, baseFrom, maps);
 }
 
 /**
@@ -384,12 +316,14 @@ export function findTargets(text: string, baseFrom: number): LexiconTarget[] {
  * @param text 本次识别原文
  * @param baseFrom 文本在文档中的起始位置
  * @param targets findTargets 在原文上扫出的命中片段
+ * @param resolvePreferred 首选词解析，默认读实时词库映射；单测时传入 stub
  * @returns 显示文本与重映射后的高亮目标
  */
 export function applyPreferredReplacements(
   text: string,
   baseFrom: number,
   targets: LexiconTarget[],
+  resolvePreferred: (keys: string[]) => string | null = getPreferredWord,
 ): { displayText: string; remappedTargets: LexiconTarget[] } {
   if (targets.length === 0) return { displayText: text, remappedTargets: targets };
   // 按起点排序后顺序拼接：替换改长度，后续坐标按累计差值重算
@@ -405,7 +339,7 @@ export function applyPreferredReplacements(
     displayText += text.slice(cursor, start);
     const segment = text.slice(start, end);
     // 首选含原文自身：已是权重首项时保持原文，避免把正确结果换成次选
-    const preferred = getPreferredWord(target.keys) ?? segment;
+    const preferred = resolvePreferred(target.keys) ?? segment;
     const insertFrom = baseFrom + displayText.length;
     displayText += preferred;
     remappedTargets.push({ from: insertFrom, to: insertFrom + preferred.length, keys: target.keys, original: segment });
