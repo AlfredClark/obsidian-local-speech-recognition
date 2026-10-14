@@ -4,6 +4,18 @@ import type { SherpaModelId } from "../../utils/sherpa-process";
 /** 语音输入触发模式：toggle 单次点击切换，push-to-talk 按住说话 */
 export type SpeechInputMode = "toggle" | "push-to-talk";
 
+/** 状态通知方式：notice 通知框常驻，statusbar 状态栏指示，none 仅异常通知 */
+export type NotificationMode = "notice" | "statusbar" | "none";
+
+/**
+ * 状态通知方式守卫：旧版本或手改 data.json 出现未知标识时回退默认，保持存量行为不变。
+ * @param value 待校验的值
+ * @returns 是否为合法的通知方式标识
+ */
+export function isNotificationMode(value: unknown): value is NotificationMode {
+  return value === "notice" || value === "statusbar" || value === "none";
+}
+
 export type ProviderType = "cpu" | "cuda" | "coreml";
 
 /** 词库存储方式：global 全仓库共享的 IndexedDB，vault 仓库内独立的 lexicon.json */
@@ -57,6 +69,8 @@ export interface LocalSpeechRecognitionPluginSettings {
   autoStartServer: boolean;
   /** 语音输入触发模式 */
   inputMode: SpeechInputMode;
+  /** 状态通知方式：过程提示走通知框/状态栏/静默，异常通知不受影响 */
+  notificationMode: NotificationMode;
   /** 语音输入麦克风设备 id；空字符串表示系统默认设备 */
   microphoneDeviceId: string;
   /** 是否启用手柄：开启后可用手柄触发录音、移动光标与切换词库候选 */

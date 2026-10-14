@@ -119,11 +119,12 @@ Service settings:
 
 Speech input:
 
-| Setting             | Description                                  |
-| ------------------- | -------------------------------------------- |
-| Microphone          | Input device; empty means the system default |
-| Refresh microphones | Re-enumerate audio input devices             |
-| Input mode          | Toggle on click, or push-to-talk (see below) |
+| Setting             | Description                                                         |
+| ------------------- | ------------------------------------------------------------------- |
+| Microphone          | Input device; empty means the system default                        |
+| Refresh microphones | Re-enumerate audio input devices                                    |
+| Input mode          | Toggle on click, or push-to-talk (see below)                        |
+| Status notification | Notice, status bar, or none for progress; errors always use notices |
 
 Lexicon settings:
 

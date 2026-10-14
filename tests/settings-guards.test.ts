@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isLexiconReplaceMode, isLexiconStorageMode } from "../src/cores/settings/types";
+import { isLexiconReplaceMode, isLexiconStorageMode, isNotificationMode } from "../src/cores/settings/types";
 import { isSherpaModelId } from "../src/utils/sherpa-process";
 
 describe("isLexiconStorageMode", () => {
@@ -26,6 +26,20 @@ describe("isLexiconReplaceMode", () => {
     expect(isLexiconReplaceMode("")).toBe(false);
     expect(isLexiconReplaceMode("prefer")).toBe(false);
     expect(isLexiconReplaceMode(null)).toBe(false);
+  });
+});
+
+describe("isNotificationMode", () => {
+  test("合法标识", () => {
+    expect(isNotificationMode("notice")).toBe(true);
+    expect(isNotificationMode("statusbar")).toBe(true);
+    expect(isNotificationMode("none")).toBe(true);
+  });
+
+  test("非法标识", () => {
+    expect(isNotificationMode("")).toBe(false);
+    expect(isNotificationMode("banner")).toBe(false);
+    expect(isNotificationMode(null)).toBe(false);
   });
 });
 

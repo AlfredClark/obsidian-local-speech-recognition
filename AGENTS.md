@@ -100,13 +100,13 @@
 
 ### settings（设置）
 
-- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`microphoneDeviceId`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`，未知存储方式经 `isLexiconStorageMode` 归一化回 `global`
+- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`notificationMode`/`microphoneDeviceId`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`，未知存储方式经 `isLexiconStorageMode` 归一化回 `global`，未知通知方式经 `isNotificationMode` 归一化回 `notice`
 - 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyLexiconStorageChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/存储方式/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeLexiconStorageChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）、手柄控制（`getGamepadItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
 - 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给 `service-actions.ts`/`lexicon-actions.ts` 的私有函数（`startService`/`stopService`/`restartService`/`testConnection`/`openSettings`/`exportLexicon`/`importLexicon`/`clearLexicon`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用；破坏性按钮经 `ButtonComponent.setDestructive()`（`setWarning()` 已废弃）
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 并经 `plugin.register` 托管退订；配置变更仅手动生效，不自动重启
-- 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示
+- 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），行内左侧刷新按钮（`ExtraButton`，刷新中禁用防连点）+ 右侧下拉同行渲染，下拉值经 `saveMicrophone` 手动持久化；构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示
 - 连接测试：`connection.ts` 的 `openWebSocket(url)` 拨号即判活（5 秒超时），不消费消息
 - 识别模型下拉：`getSherpaItems` 的 `modelType` 选项由 `utils/sherpa-process.ts` 的 `SHERPA_MODELS` 登记表生成（展示名取条目 `name`，模型专有名词不翻译），默认 `DEFAULT_SHERPA_MODEL_ID`；`modelType` 随 `toServerConfig` 进入启动配置，由 `buildSherpaArgs` 按所选模型条目拼装参数；模型切换下次启动/重启生效，不自动重启
 - 词库启用开关：`getLexiconItems` 首位为 `lexiconEnabled` 开关（持久化，默认 `true`，关闭时停用全部词库界面与编辑器集成），其后为 `lexiconStorage` 存储方式下拉（持久化，默认 `global`，`global` 全仓库共享、`vault` 各仓库独立，两后端数据相互独立不互相同步）与 `fuzzyMatchEnabled` 模糊音开关（持久化，默认 `false`），存储方式/模糊音/导出/导入/清空诸行经 `visible: () => plugin.settings.lexiconEnabled` 随开关隐藏；开关切换分别经 `notifyLexiconEnabledChange()`/`notifyLexiconStorageChange()`/`notifyFuzzyMatchChange()` 广播
@@ -176,10 +176,10 @@
 ### speech-recognition（语音识别）
 
 - `initSpeechRecognition`：注册命令 `toggle-speech-recognition`（名称 `commands.toggleRecognition`，插件不预设快捷键，用户自行绑定），并注册全局 `keyup` 监听兜底 push-to-talk 松键停止；返回 `() => controller.dispose()`
-- `SpeechController` 串行处理一次「录音→识别→投递」闭环：状态机 `idle/recording/transcribing`，`starting` 标志防双流泄漏，`generation` 代际号使卸载/重触发后的过期异步回包失效，`transcribeAbort` 取消在途识别；识别中再次触发经 `Notice` 拒绝，避免并发 WS 互相覆盖
+- `SpeechController` 串行处理一次「录音→识别→投递」闭环：状态机 `idle/recording/transcribing`，`starting` 标志防双流泄漏，`generation` 代际号使卸载/重触发后的过期异步回包失效，`transcribeAbort` 取消在途识别；识别中再次触发经 `Notice` 拒绝，避免并发 WS 互相覆盖；过程提示按 `notificationMode` 分流（notice 常驻条变身、statusbar 状态栏计时电平、none 静默），开始录音时快照、中途切换下轮生效，异常通知不受模式影响
 - 触发语义：toggle 模式按一次开始、再按一次停止；push-to-talk 为过渡实现（Obsidian 快捷键只给 keydown，无 keyup），松开 `R`/`Alt` 或再按一次均停止
 - 录音前校验服务已运行与桌面端；单次录音上限 280s（服务端 300s 拒连），到时自动停止并走正常识别流程，不丢已录音频
-- 投递策略：Markdown 编辑器聚焦且为 source 模式时，经 `getCodeMirrorEditorView` 取 CM6 视图，用单事务 `dispatch`（`changes` + `selection` 置于末尾 + `effects: [setTargetsEffect.of(findTargets(text, from))]` 触发词库后处理高亮 + `scrollIntoView`）插入光标处，失败回退 `editor.replaceSelection`；无聚焦时写剪贴板并 `Notice` 提示；空结果视同未采集到音频
+- 投递策略：Markdown 编辑器聚焦且为 source 模式时，经 `getCodeMirrorEditorView` 取 CM6 视图，用单事务 `dispatch`（`changes` + `selection` 置于末尾 + `effects: [setTargetsEffect.of(findTargets(text, from))]` 触发词库后处理高亮 + `scrollIntoView`）插入光标处，失败回退 `editor.replaceSelection`；无聚焦时写剪贴板；空结果视同未采集到音频；成功通报按通知通道分流（通知框弹提示/状态栏闪现 2 秒/静默），剪贴板回执三种模式都弹，各终态必先关过程提示
 - 麦克风错误按 `DOMException.name` 翻译（`NotAllowedError`→权限拒绝、`NotFoundError`/`OverconstrainedError`→设备缺失），其余透出原文
 
 ### lexicon（词库）
@@ -199,6 +199,7 @@
 - `audio.ts`：识别管线纯函数与常量——`TARGET_SAMPLE_RATE`(16k)/`WS_CHUNK_BYTES`(10240)/`CAPTURE_BUFFER_SIZE`(4096)，`downsampleFloat32Mono`（线性重采样）、`float32ToInt16Pcm`、`int16ToFloat32Normalized`、`mergeInt16Chunks`（合并分片）、`buildOfflineWsPayload`（组装 8 字节头 + float32 LE 请求体）
 - `cm-utils.ts`：`getCodeMirrorEditorView(editor)` 鸭子类型取 CM6 `EditorView`；`@codemirror/view` 外部化，仅 `import type` 零运行时成本，运行时逐层校验 `cm`/`dispatch`/`state`/`selection`/`main`/`from`/`to` 形态，不符返回 `null`
 - `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "removed" }`（无声调、ü→v、非汉字移除），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
+- `transcript.ts`：`stripModelPrefix(text)` 剥离 Qwen3-ASR 偶发的 `language X<asr_text>` 输出前缀，供识别客户端回包解析使用
 - `sherpa-process.ts`：纯函数与模型登记表（`SHERPA_MODELS` 各条目逐项列出模型专属参数，`SherpaModelId` 由键推导、`DEFAULT_SHERPA_MODEL_ID` 兜底；参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
 - `.svelte` 组件文件属于模块特有文件，置于所属模块目录下（如 `cores/sidebar/components/`），不受三段式约束
 
@@ -236,7 +237,7 @@
 ## 代理行为约束（AI 助手）
 
 1. 修改代码前先阅读相关文件与本规范
-2. 每次修改后必须运行 `bun run format` 与 `bun run lint` 验证通过
+2. 每次修改后必须运行 `bun run test`、`bun run format` 与 `bun run lint` 验证通过
 3. 依赖变更统一通过 `bun install`，不手动修改 `bun.lock`
 4. 版本变更使用 `bun run version`，不手动修改 manifest 版本
 5. 格式统一使用 `bun run format`，提交前 `bun run format:check` 必须通过

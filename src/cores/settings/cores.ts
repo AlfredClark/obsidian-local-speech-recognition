@@ -1,7 +1,7 @@
 import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
-import { isLexiconReplaceMode, isLexiconStorageMode, type LexiconStorageMode } from "./types";
+import { isLexiconReplaceMode, isLexiconStorageMode, isNotificationMode, type LexiconStorageMode } from "./types";
 import { getSherpaServer } from "../sherpa-server";
 import { DEFAULT_GAMEPAD_DEADZONE } from "../gamepad";
 import { notifyLanguageChange, t } from "../i18n";
@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   provider: "cpu",
   autoStartServer: false,
   inputMode: "toggle",
+  notificationMode: "notice",
   microphoneDeviceId: "",
   gamepadEnabled: false,
   gamepadDeadzone: DEFAULT_GAMEPAD_DEADZONE,
@@ -147,6 +148,10 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   // 旧版本 data.json 无替换模式字段：未知标识回退原文优先，保持存量行为不变
   if (!isLexiconReplaceMode(settings.lexiconReplaceMode)) {
     settings.lexiconReplaceMode = "original";
+  }
+  // 旧版本 data.json 无通知方式字段：未知标识回退通知框，保持存量行为不变
+  if (!isNotificationMode(settings.notificationMode)) {
+    settings.notificationMode = "notice";
   }
   // 存量 gamepadPreset 字段静默忽略：已无读取方，下次存盘自然消失
   // 手柄调参钳制：手改 data.json 灌入非法值时回退默认，避免死区锁死或连发失速
@@ -414,31 +419,36 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
-   * 语音输入条目：麦克风设备下拉、刷新按钮与触发模式。
-   * 设备缓存只在内存中，下拉选项每次渲染时由缓存重建。
+   * 语音输入条目：麦克风下拉与左侧刷新按钮同行、触发模式与状态通知。
+   * 麦克风行走 render 自组控件（ExtraButton + Dropdown），下拉值手动持久化；
+   * 设备缓存只在内存中，选项每次渲染时由缓存重建。
    */
   private getRecognitionItems(): SettingGroupItem<keyof LocalSpeechRecognitionPluginSettings>[] {
     return [
       {
         name: t("settings.microphone"),
         desc: t("settings.microphoneDesc"),
-        control: {
-          type: "dropdown",
-          key: "microphoneDeviceId",
-          defaultValue: "",
-          options: this.microphones.options(this.plugin),
-        },
-      },
-      {
-        name: t("settings.refreshMicrophones"),
-        desc: t("settings.refreshMicrophonesDesc"),
         render: (setting) => {
-          setting.addButton((button) =>
-            button.setButtonText(t("settings.refreshMicrophones")).onClick(() => {
-              void this.microphones.refresh().then(() => {
-                void this.update();
-              });
-            }),
+          // render 可重复调用：先清旧节点再重建，防按钮与下拉叠加
+          setting.controlEl.empty();
+          setting.addExtraButton((button) =>
+            button
+              .setIcon("refresh-cw")
+              .setTooltip(t("settings.refreshMicrophones"))
+              .onClick(() => {
+                button.setDisabled(true);
+                void this.microphones.refresh().then(() => {
+                  void this.update();
+                });
+              }),
+          );
+          setting.addDropdown((dropdown) =>
+            dropdown
+              .addOptions(this.microphones.options(this.plugin))
+              .setValue(this.plugin.settings.microphoneDeviceId)
+              .onChange((value) => {
+                void this.saveMicrophone(value);
+              }),
           );
         },
       },
@@ -455,7 +465,31 @@ export class SettingsTab extends PluginSettingTab {
           },
         },
       },
+      {
+        name: t("settings.notificationMode"),
+        desc: t("settings.notificationModeDesc"),
+        control: {
+          type: "dropdown",
+          key: "notificationMode",
+          defaultValue: "notice",
+          options: {
+            notice: t("settings.notificationModeOptions.notice"),
+            statusbar: t("settings.notificationModeOptions.statusbar"),
+            none: t("settings.notificationModeOptions.none"),
+          },
+        },
+      },
     ];
+  }
+
+  /**
+   * 手动持久化麦克风选择：麦克风行走 render 自组控件，脱离声明式 key 绑定，存盘需自理；
+   * deviceId 只读不广播，录音时直取最新值。
+   * @param deviceId 选中的设备 id，空字符串表示系统默认
+   */
+  private async saveMicrophone(deviceId: string): Promise<void> {
+    this.plugin.settings.microphoneDeviceId = deviceId;
+    await this.plugin.saveData(this.plugin.settings);
   }
 
   /**
