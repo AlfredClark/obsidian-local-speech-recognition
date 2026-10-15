@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildVariantKeys, MAX_FUZZY_VARIANTS, syllableVariants } from "../src/cores/lexicon/fuzzy";
+import { buildVariantKeys, MAX_FUZZY_VARIANTS, syllableVariants } from "../src/cores/lexicon";
 
 describe("syllableVariants", () => {
   test("平翘舌展开且原拼写首位", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { collectCandidates, pickPreferred, scanTargets, type PinyinCandidatesMap } from "../src/features/lexicon/target-scan";
+import { collectCandidates, pickPreferred, scanTargets, type PinyinCandidatesMap } from "../src/features/lexicon";
 
 /** 手工构造映射表：绕开存储层，精确控制候选顺序 */
 function mapsOf(entries: Array<[string, string[]]>): PinyinCandidatesMap {

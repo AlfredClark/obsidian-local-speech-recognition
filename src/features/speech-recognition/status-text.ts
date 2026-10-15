@@ -1,4 +1,4 @@
-import type { NotificationMode } from "../../cores/settings/types";
+import type { NotificationMode } from "../../cores/settings";
 
 /** 交付结果形态：inserted 有编辑器内容为证，clipboard 写入不可见 */
 export type DeliveryOutcome = "inserted" | "clipboard";

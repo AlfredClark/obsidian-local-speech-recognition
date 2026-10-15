@@ -5,7 +5,7 @@ import {
   levelToBar,
   renderRecordingStatus,
   renderTranscribingStatus,
-} from "../src/features/speech-recognition/status-text";
+} from "../src/features/speech-recognition";
 
 describe("formatElapsed", () => {
   test("补零 mm:ss", () => {

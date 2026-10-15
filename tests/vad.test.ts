@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createVadState, updateVad, type VadState } from "../src/features/speech-recognition/vad";
+import { createVadState, updateVad, type VadState } from "../src/features/speech-recognition";
 
 /** 喂入电平序列直到触发或耗尽：每片 256ms（4096 采样 @16k） */
 function runToStop(levels: number[], trailingMs = 1800): { stopped: boolean; steps: number } {

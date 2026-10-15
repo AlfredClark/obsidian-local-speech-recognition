@@ -44,9 +44,8 @@ export function collectCandidates(keys: string[], current: string, maps: PinyinC
 export function pickPreferred(keys: string[], maps: PinyinCandidatesMap[]): string | null {
   for (const key of keys) {
     for (const map of maps) {
-      for (const word of map.get(key) ?? []) {
-        return word;
-      }
+      const first = map.get(key)?.[0];
+      if (first !== undefined) return first;
     }
   }
   return null;

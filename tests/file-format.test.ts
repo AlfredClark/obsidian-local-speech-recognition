@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  normalizeStoredEntry,
-  parseLexiconJson,
-  parseLexiconTxt,
-  serializeLexiconFile,
-} from "../src/cores/lexicon/file-format";
-import type { LexiconEntry } from "../src/cores/lexicon/types";
+import { normalizeStoredEntry, parseLexiconJson, parseLexiconTxt, serializeLexiconFile } from "../src/cores/lexicon";
+import type { LexiconEntry } from "../src/cores/lexicon";
 
 describe("serializeLexiconFile", () => {
   test("不含 id 且可 roundtrip", () => {

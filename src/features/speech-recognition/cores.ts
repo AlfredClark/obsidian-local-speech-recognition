@@ -9,7 +9,7 @@ import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
 import { applyPreferredReplacements, findTargets, setTargetsEffect } from "../lexicon";
-import type { NotificationMode } from "../../cores/settings/types";
+import type { NotificationMode } from "../../cores/settings";
 import { chunkPeakLevel, renderRecordingStatus, renderTranscribingStatus, shouldShowResultNotice } from "./status-text";
 import { createVadState, updateVad, type VadState } from "./vad";
 

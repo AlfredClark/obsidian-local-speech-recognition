@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isLexiconReplaceMode, isLexiconStorageMode, isNotificationMode } from "../src/cores/settings/types";
+import { isLexiconReplaceMode, isLexiconStorageMode, isNotificationMode } from "../src/cores/settings";
 import { isSherpaModelId } from "../src/utils/sherpa-process";
 
 describe("isLexiconStorageMode", () => {

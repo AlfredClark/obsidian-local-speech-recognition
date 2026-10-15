@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldShowResultNotice } from "../src/features/speech-recognition/status-text";
+import { shouldShowResultNotice } from "../src/features/speech-recognition";
 
 describe("shouldShowResultNotice", () => {
   test("编辑器插入仅通知框模式弹", () => {

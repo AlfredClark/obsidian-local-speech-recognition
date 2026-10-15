@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SherpaServerConfig } from "../src/cores/sherpa-server/types";
+import type { SherpaServerConfig } from "../src/cores/sherpa-server";
 import { buildSherpaArgs, type SherpaModelId } from "../src/utils/sherpa-process";
 
 /** 构造服务配置：二进制与监听项固定，只换模型标识与目录 */

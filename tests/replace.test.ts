@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyPreferredReplacements } from "../src/features/lexicon/cores";
-import type { LexiconTarget } from "../src/features/lexicon/types";
+import { applyPreferredReplacements } from "../src/features/lexicon";
+import type { LexiconTarget } from "../src/features/lexicon";
 
 /** 首选解析 stub：beijing 换长词，其余保留原文 */
 function stubPreferred(keys: string[]): string | null {

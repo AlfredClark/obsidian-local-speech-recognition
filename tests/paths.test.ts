@@ -2,8 +2,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import type { SherpaServerConfig } from "../src/cores/sherpa-server/types";
-import { formatPathsDetail, validateSherpaPaths } from "../src/cores/sherpa-server/cores";
+import type { SherpaServerConfig } from "../src/cores/sherpa-server";
+import { formatPathsDetail, validateSherpaPaths } from "../src/cores/sherpa-server";
 import { getRequiredPaths, type SherpaModelId } from "../src/utils/sherpa-process";
 
 /** 建模型目录夹具：files 建空文件，dirs 建子目录 */
