@@ -1,6 +1,6 @@
-import { Notice } from "obsidian";
-import { getSherpaServer, resolveDetail, toServerConfig } from "../sherpa-server";
-import { resolveSherpaUrl } from "../../utils/sherpa-process";
+import { Notice, Platform } from "obsidian";
+import { formatPathsDetail, getSherpaServer, resolveDetail, toServerConfig, validateSherpaPaths } from "../sherpa-server";
+import { resolveSherpaUrl, validateSherpaConfig } from "../../utils/sherpa-process";
 import { t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import { openWebSocket } from "./connection";
@@ -73,6 +73,29 @@ export function stopService(plugin: LocalSpeechRecognitionPlugin): void {
   void plugin;
   getSherpaServer().stop();
   new Notice(t("settings.serverStopped"), 3000);
+}
+
+/**
+ * 手动校验路径：检查服务端文件与当前所选模型必需文件，成功失败均经 Notice 提示；
+ * 不触碰现进程，只预告下次启动能否成功。
+ * @param plugin 插件实例
+ */
+export function validateModelPaths(plugin: LocalSpeechRecognitionPlugin): void {
+  if (!Platform.isDesktop) return;
+  const config = toServerConfig(plugin);
+  const missingKey = validateSherpaConfig(config);
+  if (missingKey !== null) {
+    new Notice(t(missingKey), 5000);
+    return;
+  }
+  void validateSherpaPaths(config).then((paths) => {
+    const detail = formatPathsDetail(paths);
+    if (detail !== null) {
+      new Notice(detail, 5000);
+    } else {
+      new Notice(t("settings.pathsValid"), 3000);
+    }
+  });
 }
 
 /**

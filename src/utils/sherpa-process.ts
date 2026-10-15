@@ -36,6 +36,16 @@ export interface SherpaModelDefinition {
   readonly name: string;
   /** 组装该模型专属的启动参数，每一项单独列出便于后期维护 */
   readonly buildArgs: (context: SherpaModelArgsContext) => readonly string[];
+  /** 模型必需路径清单：启动前预校验与切换即时检查共用，每一项单独列出不共享 */
+  readonly requiredPaths: (context: SherpaModelArgsContext) => readonly RequiredModelPath[];
+}
+
+/** 模型必需路径：文件或目录，用于启动前预校验 */
+export interface RequiredModelPath {
+  /** 完整路径（已由 modelDir 展开） */
+  readonly path: string;
+  /** 文件还是目录 */
+  readonly kind: "file" | "dir";
 }
 
 /**
@@ -51,6 +61,10 @@ export const SHERPA_MODELS = {
       `--sense-voice-use-itn=1`,
       `--tokens=${modelDir}/tokens.txt`,
     ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/model.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/tokens.txt`, kind: "file" },
+    ],
   },
   /** SenseVoice 全精度模型，仅模型文件名与 int8 不同 */
   "sense-voice": {
@@ -59,6 +73,10 @@ export const SHERPA_MODELS = {
       `--sense-voice-model=${modelDir}/model.onnx`,
       `--sense-voice-use-itn=1`,
       `--tokens=${modelDir}/tokens.txt`,
+    ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/model.onnx`, kind: "file" },
+      { path: `${modelDir}/tokens.txt`, kind: "file" },
     ],
   },
   /** FunASR 量化模型（int8） */
@@ -70,6 +88,12 @@ export const SHERPA_MODELS = {
       `--funasr-nano-embedding=${modelDir}/embedding.int8.onnx`,
       `--funasr-nano-tokenizer=${modelDir}/Qwen3-0.6B`,
     ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/encoder_adaptor.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/llm.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/embedding.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/Qwen3-0.6B`, kind: "dir" },
+    ],
   },
   /** FunASR 量化模型（fp16） */
   "fun-asr-fp16": {
@@ -80,8 +104,14 @@ export const SHERPA_MODELS = {
       `--funasr-nano-embedding=${modelDir}/embedding.int8.onnx`,
       `--funasr-nano-tokenizer=${modelDir}/Qwen3-0.6B`,
     ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/encoder_adaptor.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/llm.fp16.onnx`, kind: "file" },
+      { path: `${modelDir}/embedding.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/Qwen3-0.6B`, kind: "dir" },
+    ],
   },
-  /** FunASR 全精度模型（fp32） */
+  /** FunASR 全精度模型（fp32）：llm.fp32.data 无启动参数但运行时必需，一并校验 */
   "fun-asr-fp32": {
     name: "FunASR (fp32)",
     buildArgs: ({ modelDir }: SherpaModelArgsContext) => [
@@ -89,6 +119,13 @@ export const SHERPA_MODELS = {
       `--funasr-nano-llm=${modelDir}/llm.fp32.onnx`,
       `--funasr-nano-embedding=${modelDir}/embedding.onnx`,
       `--funasr-nano-tokenizer=${modelDir}/Qwen3-0.6B`,
+    ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/encoder_adaptor.onnx`, kind: "file" },
+      { path: `${modelDir}/llm.fp32.onnx`, kind: "file" },
+      { path: `${modelDir}/llm.fp32.data`, kind: "file" },
+      { path: `${modelDir}/embedding.onnx`, kind: "file" },
+      { path: `${modelDir}/Qwen3-0.6B`, kind: "dir" },
     ],
   },
   /** Paraformer 量化模型（int8） */
@@ -98,6 +135,10 @@ export const SHERPA_MODELS = {
       `--paraformer=${modelDir}/model.int8.onnx`,
       `--tokens=${modelDir}/tokens.txt`,
     ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/model.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/tokens.txt`, kind: "file" },
+    ],
   },
   /** Paraformer 全精度模型 */
   paraformer: {
@@ -105,6 +146,10 @@ export const SHERPA_MODELS = {
     buildArgs: ({ modelDir }: SherpaModelArgsContext) => [
       `--paraformer=${modelDir}/model.onnx`,
       `--tokens=${modelDir}/tokens.txt`,
+    ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/model.onnx`, kind: "file" },
+      { path: `${modelDir}/tokens.txt`, kind: "file" },
     ],
   },
   /** Qwen3-ASR 0.6B 量化模型（int8）：官方包无 tokens.txt，起服不传 --tokens（已实测） */
@@ -122,6 +167,12 @@ export const SHERPA_MODELS = {
       `--qwen3-asr-top-p=0.8`,
       `--qwen3-asr-seed=42`,
     ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/conv_frontend.onnx`, kind: "file" },
+      { path: `${modelDir}/encoder.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/decoder.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/tokenizer`, kind: "dir" },
+    ],
   },
   /** Qwen3-ASR 1.7B 量化模型（int8）：与 0.6B 包同构，仅展示名区分，日后精度分叉再拆参数 */
   "qwen3-asr-1.7b-int8": {
@@ -136,6 +187,12 @@ export const SHERPA_MODELS = {
       `--qwen3-asr-temperature=1e-6`,
       `--qwen3-asr-top-p=0.8`,
       `--qwen3-asr-seed=42`,
+    ],
+    requiredPaths: ({ modelDir }: SherpaModelArgsContext) => [
+      { path: `${modelDir}/conv_frontend.onnx`, kind: "file" },
+      { path: `${modelDir}/encoder.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/decoder.int8.onnx`, kind: "file" },
+      { path: `${modelDir}/tokenizer`, kind: "dir" },
     ],
   },
 } as const satisfies Record<string, SherpaModelDefinition>;
@@ -153,6 +210,18 @@ export const DEFAULT_SHERPA_MODEL_ID: SherpaModelId = "sense-voice-int8";
  */
 export function isSherpaModelId(value: unknown): value is SherpaModelId {
   return typeof value === "string" && value in SHERPA_MODELS;
+}
+
+/**
+ * 取指定模型的必需路径清单：modelDir 去首尾空白与尾部斜杠，与 buildSherpaArgs 口径一致。
+ * 启动前预校验与切换即时检查共用，纯函数便于单测钉死各条目清单。
+ * @param modelType 模型标识
+ * @param modelDir 模型文件夹路径
+ * @returns 必需路径清单
+ */
+export function getRequiredPaths(modelType: SherpaModelId, modelDir: string): readonly RequiredModelPath[] {
+  const dir = modelDir.trim().replace(/[/\\]+$/, "");
+  return SHERPA_MODELS[modelType].requiredPaths({ modelDir: dir });
 }
 
 /**

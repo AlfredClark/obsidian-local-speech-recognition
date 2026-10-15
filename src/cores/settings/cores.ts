@@ -8,7 +8,7 @@ import { notifyLanguageChange, t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import { MicrophoneStore } from "./microphone-options";
 import { clearLexicon, exportLexicon, importLexicon } from "./lexicon-actions";
-import { restartService, startService, stopService, testConnection } from "./service-actions";
+import { restartService, startService, stopService, testConnection, validateModelPaths } from "./service-actions";
 import { DEFAULT_SHERPA_MODEL_ID, isSherpaModelId, SHERPA_MODELS } from "../../utils/sherpa-process";
 
 /** 设置默认值。data.json 缺失字段时（如旧版本升级）以此为兜底合并 */
@@ -316,6 +316,17 @@ export class SettingsTab extends PluginSettingTab {
           key: "modelType",
           defaultValue: DEFAULT_SHERPA_MODEL_ID,
           options: Object.fromEntries(Object.entries(SHERPA_MODELS).map(([id, model]) => [id, model.name])),
+        },
+      },
+      {
+        name: t("settings.validatePaths"),
+        desc: t("settings.validatePathsDesc"),
+        render: (setting) => {
+          setting.addButton((button) =>
+            button.setButtonText(t("settings.validatePaths")).onClick(() => {
+              validateModelPaths(this.plugin);
+            }),
+          );
         },
       },
       {

@@ -104,7 +104,7 @@
 - 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyLexiconStorageChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/存储方式/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeLexiconStorageChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）、手柄控制（`getGamepadItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
-- 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给 `service-actions.ts`/`lexicon-actions.ts` 的私有函数（`startService`/`stopService`/`restartService`/`testConnection`/`openSettings`/`exportLexicon`/`importLexicon`/`clearLexicon`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用；破坏性按钮经 `ButtonComponent.setDestructive()`（`setWarning()` 已废弃）
+- 动作行约定：按钮等非持久化行走 `render` 回调（如 `setting.addButton(...)`），不占用 `control/key`，点击处理委托给 `service-actions.ts`/`lexicon-actions.ts` 的私有函数（`startService`/`stopService`/`restartService`/`testConnection`/`validateModelPaths`/`openSettings`/`exportLexicon`/`importLexicon`/`clearLexicon`），内部反馈经 `Notice` + `t()` 提示；`render` 回调内不直接读写 `plugin.settings` 以外的副作用；破坏性按钮经 `ButtonComponent.setDestructive()`（`setWarning()` 已废弃）
 - 服务启停按钮显隐：按 `getSherpaServer().isRunning()` 经 `visible` 谓词切换（启动行取反），SettingsTab 构造器订阅 `subscribeStatus(() => this.update())` 并经 `plugin.register` 托管退订；配置变更仅手动生效，不自动重启
 - 麦克风下拉：`MicrophoneStore`（`microphone-options.ts`）在内存中缓存设备列表（deviceId 随插拔变化，不进 data.json），行内左侧刷新按钮（`ExtraButton`，刷新中禁用防连点）+ 右侧下拉同行渲染，下拉值经 `saveMicrophone` 手动持久化；构造器 `refreshSilent()` 预拉一次，下拉 `options()` 首项恒为系统默认并保留已保存但未枚举到的 id；刷新失败经 `Notice` 提示
 - 连接测试：`connection.ts` 的 `openWebSocket(url)` 拨号即判活（5 秒超时），不消费消息
@@ -127,13 +127,13 @@
 ### sherpa-server（服务管理）
 
 - 三层分工：`utils/sherpa-process.ts` 纯函数（参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`，无状态无 init）；`cores/sherpa-server` 持有进程句柄与 `stopped/starting/running/error` 状态，导出 `getSherpaServer()` 单例（`start/stop/restart/dispose/getStatus/isRunning/subscribeStatus`）；`features/sherpa-server` 只做 autoStart 编排 + 向 `cleanups` 注册同步回收
-- 进程拉起：`Platform.isDesktop` 守卫后同步 `require("child_process").spawn`（src 内零顶层 `node:` 导入，含 type-only，窄 `ManagedProcess`/`LogStream` 结构类型代替 `ChildProcess`）；`spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] })`，stdout/stderr 经 `attachLogDrain` 消费（pipe 无人读取会阻塞子进程）并打 console；就绪探测按 300ms 轮询 ws 拨号，open 即 running，10s 超时或异常退出置 error 并透出退出码；`starting/running` 重复 start 直接返回 `already-running`
+- 进程拉起：`Platform.isDesktop` 守卫后先经 `validateSherpaConfig` 查空值、再经 `validateSherpaPaths` 查二进制可执行/模型目录/登记表清单（`require("node:fs")` 失败放行），缺失直接返回失败不 spawn；同步 `require("child_process").spawn`（src 内零顶层 `node:` 导入，含 type-only，窄 `ManagedProcess`/`LogStream` 结构类型代替 `ChildProcess`）；`spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] })`，stdout/stderr 经 `attachLogDrain` 消费（pipe 无人读取会阻塞子进程）并打 console；就绪探测按 300ms 轮询 ws 拨号，open 即 running，10s 超时或异常退出置 error 并透出退出码；`starting/running` 重复 start 直接返回 `already-running`
 - 状态广播：`setStatus` 触发订阅者，设置页与侧边栏服务页靠其刷新；`stop()` 必须同步返回（适配 `cleanups: Array<() => void>`），SIGTERM 后 3s 未退升级 SIGKILL
 - 取消与旧代事件：`cancelProbe` 结算在途 `start()`（stop/dispose 时返回 `cancelled`），`cancelled` 守卫丢弃旧进程延迟事件，避免 stop 后再翻活
 - restart 串行锁：`stop` 是 fire-and-forget，前一次 `restart` 未完成时返回 `already-restarting`；重启路径用 `stopImmediate()` 直接 SIGKILL，不让老进程占端口导致新进程 EADDRINUSE
 - 退出释放：应用关闭不保证走插件 `onunload`，feature 层同时订阅 `workspace.on("quit")` 与窗口 `beforeunload`，双路径调用同步强杀的 `dispose()`（直接 SIGKILL，不等 SIGTERM 宽限回调）；插件禁用/卸载仍走 `stop()` 正常关闭流程
-- 失败详情翻译：`resolveDetail` 将 `settings.missingBinaryPath`/`settings.missingModelPath` 映射为 `t()` 文案，运行时错误（退出码/超时等）原文透出；`toServerConfig` 从最近一次 `plugin.settings` 组装配置
-- 模型登记表（`utils/sherpa-process.ts` 的 `SHERPA_MODELS`）：键为模型标识，条目含下拉展示名 `name`（模型专有名词，直接写字符串、不参与翻译）与该模型专属启动参数 `buildArgs`（每一项单独列出，不与其他模型共享数组）；`SherpaModelId` 由登记表键推导，`DEFAULT_SHERPA_MODEL_ID` 为默认项（`sense-voice-int8`），设置页「识别模型」下拉与 `SherpaServerConfig.modelType` 均出自此
+- 失败详情翻译：`resolveDetail` 将 `settings.missingBinaryPath`/`settings.missingModelPath` 映射为 `t()` 文案，路径预校验的缺失文本在源头组装后透出，运行时错误（退出码/超时等）原文透出；`toServerConfig` 从最近一次 `plugin.settings` 组装配置
+- 模型登记表（`utils/sherpa-process.ts` 的 `SHERPA_MODELS`）：键为模型标识，条目含下拉展示名 `name`（模型专有名词，直接写字符串、不参与翻译）与该模型专属启动参数 `buildArgs`（每一项单独列出，不与其他模型共享数组）及必需路径清单 `requiredPaths`（同风格逐项列出，供启动前预校验）；`SherpaModelId` 由登记表键推导，`DEFAULT_SHERPA_MODEL_ID` 为默认项（`sense-voice-int8`），设置页「识别模型」下拉与 `SherpaServerConfig.modelType` 均出自此
 - 参数拼装（`buildSherpaArgs`）：`--port=` + `--num-threads=` + 所选模型条目的参数 + `--log-file=`；登记表现分四组且均经实测可用——SenseVoice（`--sense-voice-model` + `--sense-voice-use-itn=1` + `--tokens`，int8/全精度）、FunASR（`--funasr-nano-encoder-adaptor`/`-llm`/`-embedding`/`-tokenizer`，int8/fp16/fp32）、Paraformer（`--paraformer` + `--tokens`，int8/全精度）、Qwen3-ASR（`--qwen3-asr-conv-frontend`/`-encoder`/`-decoder`/`-tokenizer` + 生成参数，0.6B/1.7B int8，无 `--tokens`；默认走 CPU，CUDA 需二进制与 cuDNN 版本匹配且 int8 无增益）；新增模型只需在登记表追加条目，README 的「支持的模型」表格同步列出所需文件与特点
 
 ### sherpa-client（识别客户端）
@@ -200,7 +200,7 @@
 - `cm-utils.ts`：`getCodeMirrorEditorView(editor)` 鸭子类型取 CM6 `EditorView`；`@codemirror/view` 外部化，仅 `import type` 零运行时成本，运行时逐层校验 `cm`/`dispatch`/`state`/`selection`/`main`/`from`/`to` 形态，不符返回 `null`
 - `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "removed" }`（无声调、ü→v、非汉字移除），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
 - `transcript.ts`：`stripModelPrefix(text)` 剥离 Qwen3-ASR 偶发的 `language X<asr_text>` 输出前缀，供识别客户端回包解析使用
-- `sherpa-process.ts`：纯函数与模型登记表（`SHERPA_MODELS` 各条目逐项列出模型专属参数，`SherpaModelId` 由键推导、`DEFAULT_SHERPA_MODEL_ID` 兜底；参数拼接 `buildSherpaArgs`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
+- `sherpa-process.ts`：纯函数与模型登记表（`SHERPA_MODELS` 各条目逐项列出模型专属参数与必需路径清单，`SherpaModelId` 由键推导、`DEFAULT_SHERPA_MODEL_ID` 兜底；参数拼接 `buildSherpaArgs`、必需路径 `getRequiredPaths`、配置校验 `validateSherpaConfig`、地址组装 `resolveSherpaUrl`），无状态无 init
 - `.svelte` 组件文件属于模块特有文件，置于所属模块目录下（如 `cores/sidebar/components/`），不受三段式约束
 
 ## 代码规范

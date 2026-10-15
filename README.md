@@ -111,6 +111,7 @@ Service settings:
 | Server binary path | Path to the `sherpa-onnx-offline-websocket-server` executable                                       |
 | Model folder path  | Folder holding the files required by the selected model (see [Supported models](#supported-models)) |
 | Recognition model  | Which supported model the service loads at start; takes effect on the next start                    |
+| Validate paths     | Check the server binary and the selected model files before starting                                |
 | Host / Port        | Where the service listens (defaults `127.0.0.1` / `6006`)                                           |
 | CPU threads        | Threads used by the service neural network                                                          |
 | Test connection    | Dial the configured WebSocket address to check reachability                                         |
@@ -197,14 +198,15 @@ Notes:
 
 ## Troubleshooting
 
-| Symptom                            | What to do                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| Microphone list empty or unlabeled | Allow microphone access once, then click Refresh microphones              |
-| "Service is not running" Notice    | Start the service from settings, or enable auto-start                     |
-| Connection test fails              | Check binary/model paths, host/port, and whether the port is in use       |
-| Microphone denied / not found      | Check OS microphone permission and that the selected device is plugged in |
-| Recognition fails                  | Check the Notice detail; for exit codes, verify the model folder layout   |
-| An unexpected word gets underlined | Fuzzy pinyin matching is on; turn it off under Lexicon settings           |
+| Symptom                                   | What to do                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------- |
+| Microphone list empty or unlabeled        | Allow microphone access once, then click Refresh microphones                     |
+| "Service is not running" Notice           | Start the service from settings, or enable auto-start                            |
+| Connection test fails                     | Check binary/model paths, host/port, and whether the port is in use              |
+| Microphone denied / not found             | Check OS microphone permission and that the selected device is plugged in        |
+| Recognition fails                         | Check the Notice detail; for exit codes, verify the model folder layout          |
+| Service fails to start with missing paths | The Notice names the missing files; match the model folder to the selected model |
+| An unexpected word gets underlined        | Fuzzy pinyin matching is on; turn it off under Lexicon settings                  |
 
 ## Privacy
 

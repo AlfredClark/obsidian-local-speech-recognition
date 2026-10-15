@@ -1,5 +1,5 @@
 import { Platform } from "obsidian";
-import { buildSherpaArgs, resolveSherpaUrl, validateSherpaConfig } from "../../utils/sherpa-process";
+import { buildSherpaArgs, getRequiredPaths, resolveSherpaUrl, validateSherpaConfig } from "../../utils/sherpa-process";
 import type { SherpaServerConfig, SherpaServerManager, SherpaServerResult, SherpaServerStatus } from "./types";
 import { t } from "../i18n";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -45,6 +45,106 @@ interface ManagedProcess {
 
 /** 动态加载的 spawn 签名，与 child_process.spawn 对齐的最小子集 */
 type SpawnFn = (command: string, args: Array<string>, options: { stdio: Array<string> }) => ManagedProcess;
+
+/**
+ * node:fs 窄类型：仅路径存在性校验所需成员，避免顶层导入 node:fs 类型。
+ * constants 取自 fs 根（不在 promises 下），与 require("node:fs") 形态对齐。
+ */
+interface NodeFs {
+  /** 异步文件能力：存在性与可读性探测 */
+  readonly promises: {
+    /** 可读/可执行探测，不可达时 reject */
+    access(path: string, mode?: number): Promise<void>;
+    /** 元信息，不存在时 reject */
+    stat(path: string): Promise<{ isDirectory(): boolean }>;
+  };
+  /** 权限常量：X_OK 可执行，R_OK 可读 */
+  readonly constants: { X_OK: number; R_OK: number };
+}
+
+/** 路径预校验结论：二进制与模型侧分开，便于按缺失类型组装提示 */
+export interface SherpaPathsCheck {
+  /** 二进制缺失时为其路径，否则为 null */
+  readonly binary: string | null;
+  /** 模型侧缺失路径（目录本身或清单项），展示用绝对路径 */
+  readonly missing: readonly string[];
+}
+
+/**
+ * 校验服务端路径：二进制可执行、模型目录为目录、登记表清单逐项可读。
+ * 纯 fs 探测，不含 Platform 守卫（调用方保证桌面端）；require 失败时放行，
+ * 回退到起服后报错的老行为，不砖化启动。
+ * @param config 服务启动配置；调用方保证 binaryPath/modelPath 非空
+ * @returns 路径预校验结论
+ */
+export async function validateSherpaPaths(config: SherpaServerConfig): Promise<SherpaPathsCheck> {
+  let fs: NodeFs;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- 桌面 CJS 插件加载 Node 内建模块的唯一可行路径
+    fs = require("node:fs") as NodeFs;
+  } catch {
+    return { binary: null, missing: [] };
+  }
+  const binary = config.binaryPath.trim();
+  try {
+    await fs.promises.access(binary, fs.constants.X_OK);
+  } catch {
+    return { binary, missing: [] };
+  }
+  const modelDir = config.modelPath.trim();
+  const missing: string[] = [];
+  let dirOk = true;
+  try {
+    const stat = await fs.promises.stat(modelDir);
+    if (!stat.isDirectory()) {
+      missing.push(modelDir);
+      dirOk = false;
+    }
+  } catch {
+    missing.push(modelDir);
+    dirOk = false;
+  }
+  // 目录本身缺失时不再逐项检查，避免满屏噪音
+  if (dirOk) {
+    for (const item of getRequiredPaths(config.modelType, modelDir)) {
+      try {
+        if (item.kind === "dir") {
+          const stat = await fs.promises.stat(item.path);
+          if (!stat.isDirectory()) missing.push(item.path);
+        } else {
+          await fs.promises.access(item.path, fs.constants.R_OK);
+        }
+      } catch {
+        missing.push(item.path);
+      }
+    }
+  }
+  return { binary: null, missing };
+}
+
+/**
+ * 取路径末段文件名：缺失清单展示只显示文件名，不拼完整路径。
+ * @param path 完整路径
+ * @returns 末段文件名，取不到时回退原串
+ */
+function basenameOf(path: string): string {
+  const parts = path.replace(/[/\\]+$/, "").split(/[/\\]/);
+  return parts[parts.length - 1] ?? path;
+}
+
+/**
+ * 路径预校验结论组装为展示文本：二进制与模型侧各一键，齐了返回 null。
+ * start() 与手动校验按钮共用，消息口径唯一。
+ * @param paths 路径预校验结论
+ * @returns 可展示文本，无缺失时返回 null
+ */
+export function formatPathsDetail(paths: SherpaPathsCheck): string | null {
+  if (paths.binary !== null) return t("settings.binaryNotFound", { path: basenameOf(paths.binary) });
+  if (paths.missing.length > 0) {
+    return t("settings.modelFilesMissing", { files: paths.missing.map((item) => basenameOf(item)).join("、") });
+  }
+  return null;
+}
 
 /** 服务就绪探测间隔毫秒数：轮询 ws 拨号，open 即判活 */
 const READY_POLL_INTERVAL_MS = 300;
@@ -142,6 +242,9 @@ class SherpaServer implements SherpaServerManager {
     if (!Platform.isDesktop) return { ok: false, detail: "desktop-only" };
     const missingKey = validateSherpaConfig(config);
     if (missingKey !== null) return { ok: false, detail: missingKey };
+    // 路径预校验：二进制/目录/模型清单缺失直接失败，避免起服后才报退出码
+    const pathsDetail = formatPathsDetail(await validateSherpaPaths(config));
+    if (pathsDetail !== null) return { ok: false, detail: pathsDetail };
     // Obsidian 桌面端以 CJS 形式加载插件：Node 内建模块须走 require 同步加载；
     // 原生 import("node:child_process") 会被当作网络模块抓取而报 Failed to fetch。
     // require 写法被 @typescript-eslint/no-require-imports 禁止，此处为桌面 CJS 唯一可行路径。
