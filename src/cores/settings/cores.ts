@@ -1,7 +1,13 @@
 import { PluginSettingTab } from "obsidian";
 import type { SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type { LocalSpeechRecognitionPluginSettings } from "./types";
-import { isLexiconReplaceMode, isLexiconStorageMode, isNotificationMode, type LexiconStorageMode } from "./types";
+import {
+  isLexiconHistoryMode,
+  isLexiconReplaceMode,
+  isLexiconStorageMode,
+  isNotificationMode,
+  type LexiconStorageMode,
+} from "./types";
 import { getSherpaServer } from "../sherpa-server";
 import { DEFAULT_GAMEPAD_DEADZONE } from "../gamepad";
 import { notifyLanguageChange, t } from "../i18n";
@@ -42,6 +48,8 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   lexiconStorage: "global",
   fuzzyMatchEnabled: false,
   lexiconReplaceMode: "original",
+  lexiconHistory: "none",
+  lexiconHistoryCount: 3,
 };
 
 /** 词库开关变更订阅回调集合；设置页写入后广播，词库 feature 与侧边栏据此启停 */
@@ -151,6 +159,12 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   if (!isLexiconReplaceMode(settings.lexiconReplaceMode)) {
     settings.lexiconReplaceMode = "original";
   }
+  // 旧版本 data.json 无转写历史字段：未知标识回退不保留，保持存量行为不变
+  if (!isLexiconHistoryMode(settings.lexiconHistory)) {
+    settings.lexiconHistory = "none";
+  }
+  // 手改 data.json 灌入非法保留条数时回退默认，避免超量装饰堆积
+  settings.lexiconHistoryCount = clampNumber(settings.lexiconHistoryCount, 1, 20, 3);
   // 旧版本 data.json 无通知方式字段：未知标识回退通知框，保持存量行为不变
   if (!isNotificationMode(settings.notificationMode)) {
     settings.notificationMode = "notice";
@@ -761,6 +775,35 @@ export class SettingsTab extends PluginSettingTab {
             original: t("settings.lexiconReplaceModeOptions.original"),
             lexicon: t("settings.lexiconReplaceModeOptions.lexicon"),
           },
+        },
+      },
+      {
+        name: t("settings.lexiconHistory"),
+        desc: t("settings.lexiconHistoryDesc"),
+        // 词库关闭时不显示：该选项仅决定识别高亮的保留策略，无词库时无意义
+        visible: () => this.plugin.settings.lexiconEnabled,
+        control: {
+          type: "dropdown",
+          key: "lexiconHistory",
+          defaultValue: "none",
+          options: {
+            none: t("settings.lexiconHistoryOptions.none"),
+            count: t("settings.lexiconHistoryOptions.count"),
+            all: t("settings.lexiconHistoryOptions.all"),
+          },
+        },
+      },
+      {
+        name: t("settings.lexiconHistoryCount"),
+        desc: t("settings.lexiconHistoryCountDesc"),
+        // 仅按条数保留时有意义：其余模式下隐藏，避免无效设置
+        visible: () => this.plugin.settings.lexiconEnabled && this.plugin.settings.lexiconHistory === "count",
+        control: {
+          type: "number",
+          key: "lexiconHistoryCount",
+          defaultValue: 3,
+          min: 1,
+          max: 20,
         },
       },
       {

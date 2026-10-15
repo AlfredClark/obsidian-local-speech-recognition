@@ -8,7 +8,7 @@ import { chunkRmsLevel, int16ToFloat32Normalized, mergeInt16Chunks } from "../..
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
-import { applyPreferredReplacements, findTargets, setTargetsEffect } from "../lexicon";
+import { applyPreferredReplacements, createTargetsEffect, findTargets } from "../lexicon";
 import type { NotificationMode } from "../../cores/settings";
 import { chunkPeakLevel, renderRecordingStatus, renderTranscribingStatus, shouldShowResultNotice } from "./status-text";
 import { createVadState, updateVad, type VadState } from "./vad";
@@ -351,7 +351,9 @@ class SpeechController {
             changes: { from, to, insert: insertText },
             // selection: { anchor: from, head: from + text.length },   // 自动选中输入文本
             selection: { anchor: from + insertText.length }, // 光标自动移动到末尾
-            effects: [setTargetsEffect.of(targets)],
+            effects: [
+              createTargetsEffect(targets, this.plugin.settings.lexiconHistory, this.plugin.settings.lexiconHistoryCount),
+            ],
             scrollIntoView: true,
           });
           this.announceInserted();

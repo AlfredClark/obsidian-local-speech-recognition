@@ -32,7 +32,6 @@ export function isLexiconStorageMode(value: unknown): value is LexiconStorageMod
 
 /** 替换模式：original 优先显示识别原文，lexicon 优先显示词库首选词 */
 export type LexiconReplaceMode = "original" | "lexicon";
-
 /**
  * 替换模式守卫：旧版本或手改 data.json 出现未知标识时回退默认，保持存量行为不变。
  * @param value 待校验的值
@@ -40,6 +39,18 @@ export type LexiconReplaceMode = "original" | "lexicon";
  */
 export function isLexiconReplaceMode(value: unknown): value is LexiconReplaceMode {
   return value === "original" || value === "lexicon";
+}
+
+/** 转写历史保留方式：none 每次重建（现状），count 保留最近 N 次插入，all 全部保留 */
+export type LexiconHistoryMode = "none" | "count" | "all";
+
+/**
+ * 转写历史守卫：旧版本或手改 data.json 出现未知标识时回退默认，保持存量行为不变。
+ * @param value 待校验的值
+ * @returns 是否为合法的历史保留标识
+ */
+export function isLexiconHistoryMode(value: unknown): value is LexiconHistoryMode {
+  return value === "none" || value === "count" || value === "all";
 }
 
 /**
@@ -105,4 +116,8 @@ export interface LocalSpeechRecognitionPluginSettings {
   fuzzyMatchEnabled: boolean;
   /** 替换模式：决定识别结果写入编辑器时优先显示原文还是词库首选词 */
   lexiconReplaceMode: LexiconReplaceMode;
+  /** 转写历史保留方式：识别高亮随新插入重建/保留最近 N 次/全部保留 */
+  lexiconHistory: LexiconHistoryMode;
+  /** 转写历史保留条数：count 模式下保留的最近插入批次数，1~20 */
+  lexiconHistoryCount: number;
 }

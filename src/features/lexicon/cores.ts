@@ -15,7 +15,7 @@ import {
   setLexiconStorageMode,
 } from "../../cores/lexicon";
 import { subscribeFuzzyMatchChange, subscribeLexiconEnabledChange, subscribeLexiconStorageChange } from "../../cores/settings";
-import type { LexiconStorageMode } from "../../cores/settings";
+import type { LexiconHistoryMode, LexiconStorageMode } from "../../cores/settings";
 import { t } from "../../cores/i18n";
 import { toPinyin } from "../../utils/pinyin";
 import type LocalSpeechRecognitionPlugin from "../../main";
@@ -185,41 +185,107 @@ function toErrorDetail(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 全量替换高亮片段；value 为 null 或空数组时清空 */
-export const setTargetsEffect = StateEffect.define<LexiconTarget[] | null>();
+/** 识别高亮写入载荷：一次插入的 targets + 批次与保留策略（设置在投递时读入，打包进事务） */
+export interface TargetsEffectValue {
+  /** 本次插入命中的片段；null 或空表示本次无新增 */
+  readonly targets: LexiconTarget[] | null;
+  /** 插入批次 id：模块内单调递增，供按批末位淘汰 */
+  readonly batch: number;
+  /** 保留策略：none 重建，count/all 合并 */
+  readonly mode: LexiconHistoryMode;
+  /** count 模式保留的最近批次数 */
+  readonly limit: number;
+}
+
+/** 写入识别高亮片段；保留策略由载荷携带，字段按其重建或合并 */
+export const setTargetsEffect = StateEffect.define<TargetsEffectValue>();
 
 /** 点击替换后仅清除被替换的那处高亮；携带替换前的文档区间（旧坐标） */
 export const dismissTargetEffect = StateEffect.define<{ from: number; to: number }>();
 
-const targetField = StateField.define<DecorationSet>({
+/** 插入批次计数：每次识别插入经 createTargetsEffect 取号，单调递增 */
+let historyBatch = 0;
+
+/**
+ * 构造识别高亮 effect：分配本轮批次 id 并打包保留策略。
+ * 由语音投递在调度时调用，模式与条数取当时设置（切换后下轮生效）。
+ * @param targets 本次插入命中的片段
+ * @param mode 保留策略
+ * @param limit count 模式保留的最近批次数
+ * @returns 可随插入事务 dispatch 的 effect
+ */
+export function createTargetsEffect(
+  targets: LexiconTarget[] | null,
+  mode: LexiconHistoryMode,
+  limit: number,
+): StateEffect<TargetsEffectValue> {
+  historyBatch += 1;
+  return setTargetsEffect.of({ targets, batch: historyBatch, mode, limit });
+}
+
+/**
+ * 读装饰的插入批次：无标记时视为最老，优先淘汰。
+ * @param value 装饰实例
+ * @returns 批次 id，无标记或非法时返回 -1
+ */
+function readBatch(value: Decoration): number {
+  const spec: unknown = value.spec;
+  if (typeof spec !== "object" || spec === null || !("attributes" in spec)) return -1;
+  const attributes: unknown = spec.attributes;
+  if (typeof attributes !== "object" || attributes === null || !("data-batch" in attributes)) return -1;
+  const raw: unknown = attributes["data-batch"];
+  if (typeof raw !== "string") return -1;
+  const batch = Number.parseInt(raw, 10);
+  return Number.isNaN(batch) ? -1 : batch;
+}
+
+/** 识别高亮字段；导出供单测读取装饰校验保留策略 */
+export const targetField = StateField.define<DecorationSet>({
   create() {
     return Decoration.none;
   },
   update(decos, tr) {
+    let current = decos;
+    let incoming: TargetsEffectValue | null = null;
     for (const e of tr.effects) {
-      if (e.is(setTargetsEffect)) {
-        if (e.value === null || e.value.length === 0) {
-          return Decoration.none;
-        }
-        // effect 携带的坐标已基于插入后的文档，直接构建；sort 避免位置无序时 RangeSetBuilder 报错
-        const list = e.value.map((target) =>
-          Decoration.mark({
-            class: "target-word",
-            attributes: {
-              "data-keys": target.keys.join(","),
-              "data-original": target.original,
-            },
-          }).range(target.from, target.to),
-        );
-        return Decoration.set(list, true);
-      }
       if (e.is(dismissTargetEffect)) {
-        // 先按旧坐标滤掉被替换的那处，再统一 map 让其余高亮随本次变更移动
+        // 先按旧坐标滤掉被替换的那处，末尾统一 map 让其余高亮随本次变更移动
         const { from, to } = e.value;
-        decos = decos.update({ filter: (filterFrom, filterTo) => filterFrom !== from || filterTo !== to });
+        current = current.update({ filter: (filterFrom, filterTo) => filterFrom !== from || filterTo !== to });
+      } else if (e.is(setTargetsEffect)) {
+        incoming = e.value;
       }
     }
-    return decos.map(tr.changes);
+    current = current.map(tr.changes);
+    if (incoming === null) return current;
+    const { targets, batch, mode, limit } = incoming;
+    if (targets === null || targets.length === 0) {
+      // 本次无新增：不保留档清空，保留档维持映射后的旧集合
+      return mode === "none" ? Decoration.none : current;
+    }
+    const fresh = targets.map((target) =>
+      Decoration.mark({
+        class: "target-word",
+        attributes: {
+          "data-keys": target.keys.join(","),
+          "data-original": target.original,
+          "data-batch": String(batch),
+        },
+      }).range(target.from, target.to),
+    );
+    if (mode === "none") {
+      // effect 携带的坐标已基于插入后的文档，直接构建；sort 避免位置无序时 RangeSetBuilder 报错
+      return Decoration.set(fresh, true);
+    }
+    const old: Array<{ from: number; to: number; value: Decoration }> = [];
+    current.between(0, tr.state.doc.length, (from, to, value) => {
+      old.push({ from, to, value });
+    });
+    const merged = Decoration.set([...fresh, ...old], true);
+    if (mode === "all") return merged;
+    // 按批末位淘汰：批次 id 单调递增，只留最近 limit 批
+    const cutoff = batch - Math.max(1, limit) + 1;
+    return merged.update({ filter: (_from, _to, value) => readBatch(value) >= cutoff });
   },
   provide: (f) => EditorView.decorations.from(f),
 });

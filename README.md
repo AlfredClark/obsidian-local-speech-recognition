@@ -134,6 +134,8 @@ Lexicon settings:
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Enable lexicon          | Turn all lexicon features on or off, including the sidebar tab and editor integration (default on)                     |
 | Fuzzy pinyin matching   | Also match words differing only in retroflex initials or front/back nasals (default off; see Lexicon below)            |
+| Transcription history   | Keep recognition highlights across insertions: none, recent N, or all (default none)                                   |
+| History count           | How many recent insertions to keep, shown only for recent-N mode (1–20, default 3)                                     |
 | Export / Import / Clear | Back up to JSON, import from JSON or one-word-per-line text, or permanently delete every entry (hidden while disabled) |
 
 Gamepad settings (all hidden while the gamepad is disabled; see [Gamepad control](#gamepad-control)):
