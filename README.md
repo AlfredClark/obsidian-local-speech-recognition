@@ -119,12 +119,13 @@ Service settings:
 
 Speech input:
 
-| Setting             | Description                                                         |
-| ------------------- | ------------------------------------------------------------------- |
-| Microphone          | Input device; empty means the system default                        |
-| Refresh microphones | Re-enumerate audio input devices                                    |
-| Input mode          | Toggle on click, or push-to-talk (see below)                        |
-| Status notification | Notice, status bar, or none for progress; errors always use notices |
+| Setting             | Description                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| Microphone          | Input device (empty means the system default); the refresh button re-enumerates devices           |
+| Input mode          | Toggle on click, or push-to-talk (see below)                                                      |
+| Status notification | Notice, status bar, or none for progress; errors always use notices                               |
+| Auto-stop           | Stop and transcribe automatically after the silence duration (off by default)                     |
+| Silence duration    | Seconds of silence to wait before auto-stop, shown only when auto-stop is on (1–5 s, default 2 s) |
 
 Lexicon settings:
 

@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS: LocalSpeechRecognitionPluginSettings = {
   autoStartServer: false,
   inputMode: "toggle",
   notificationMode: "notice",
+  vadAutoStop: false,
+  vadSilenceSeconds: 2,
   microphoneDeviceId: "",
   gamepadEnabled: false,
   gamepadDeadzone: DEFAULT_GAMEPAD_DEADZONE,
@@ -153,6 +155,8 @@ export async function loadSettings(plugin: LocalSpeechRecognitionPlugin): Promis
   if (!isNotificationMode(settings.notificationMode)) {
     settings.notificationMode = "notice";
   }
+  // 手改 data.json 灌入非法静音时间时回退默认，避免 perpetual 等待或秒停
+  settings.vadSilenceSeconds = clampNumber(settings.vadSilenceSeconds, 1, 5, 2);
   // 存量 gamepadPreset 字段静默忽略：已无读取方，下次存盘自然消失
   // 手柄调参钳制：手改 data.json 灌入非法值时回退默认，避免死区锁死或连发失速
   settings.gamepadDeadzone = clampNumber(settings.gamepadDeadzone, 0, 0.9, DEFAULT_GAMEPAD_DEADZONE);
@@ -477,6 +481,30 @@ export class SettingsTab extends PluginSettingTab {
             statusbar: t("settings.notificationModeOptions.statusbar"),
             none: t("settings.notificationModeOptions.none"),
           },
+        },
+      },
+      {
+        name: t("settings.vadAutoStop"),
+        desc: t("settings.vadAutoStopDesc"),
+        control: {
+          type: "toggle",
+          key: "vadAutoStop",
+          defaultValue: false,
+        },
+      },
+      {
+        name: t("settings.vadSilenceSeconds"),
+        desc: t("settings.vadSilenceSecondsDesc"),
+        // 仅自动收尾开启时有意义，关闭时隐藏
+        visible: () => this.plugin.settings.vadAutoStop,
+        control: {
+          type: "slider",
+          key: "vadSilenceSeconds",
+          defaultValue: 2,
+          min: 1,
+          max: 5,
+          step: 0.5,
+          displayFormat: (value) => `${value} s`,
         },
       },
     ];

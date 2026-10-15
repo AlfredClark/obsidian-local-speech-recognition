@@ -69,6 +69,21 @@ export function int16ToFloat32Normalized(input: Int16Array): Float32Array {
 }
 
 /**
+ * 分片 RMS 电平：均方根比峰值抗毛刺，供静音判断用；与状态栏峰值电平互补。
+ * @param chunk 16kHz 单声道 Int16 分片
+ * @returns 0~1 的电平，空分片返回 0
+ */
+export function chunkRmsLevel(chunk: Int16Array): number {
+  if (chunk.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < chunk.length; i++) {
+    const normalized = (chunk[i] ?? 0) / 32768;
+    sum += normalized * normalized;
+  }
+  return Math.sqrt(sum / chunk.length);
+}
+
+/**
  * 合并采集回调的 Int16 分片：录音结束时一次性组包，避免发送阶段多次拷贝。
  * @param chunks 采集回调累积的分片
  * @returns 连续 PCM 数组；空输入返回空数组

@@ -100,7 +100,7 @@
 
 ### settings（设置）
 
-- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`notificationMode`/`microphoneDeviceId`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`，未知存储方式经 `isLexiconStorageMode` 归一化回 `global`，未知通知方式经 `isNotificationMode` 归一化回 `notice`
+- `DEFAULT_SETTINGS` 提供默认值（`collapsible`/`language`/`binaryPath`/`modelPath`/`modelType`/`host`/`port`/`numThreads`/`autoStartServer`/`inputMode`/`notificationMode`/`vadAutoStop`/`vadSilenceSeconds`/`microphoneDeviceId`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled`），`loadSettings` 从 data.json 读取后与默认值浅合并（展开运算，避免共享默认对象被意外修改），旧版本缺字段时自动兜底，未知/已移除的模型标识经 `isSherpaModelId` 归一化回 `DEFAULT_SHERPA_MODEL_ID`，未知存储方式经 `isLexiconStorageMode` 归一化回 `global`，未知通知方式经 `isNotificationMode` 归一化回 `notice`
 - 设置页使用 1.13.1+ 声明式 API（`getSettingDefinitions`），读写 `plugin.settings` 与持久化由 Obsidian 自动完成；覆写 `setControlValue` 触发 `update()` 重渲染，并在 `language`/`lexiconEnabled`/`lexiconStorage`/`fuzzyMatchEnabled` 写入时分别调用 `notifyLanguageChange()`/`notifyLexiconEnabledChange()`/`notifyLexiconStorageChange()`/`notifyFuzzyMatchChange()` 广播，语言切换与词库/存储方式/模糊音开关等联动即时生效；`subscribeLexiconEnabledChange`/`subscribeLexiconStorageChange`/`subscribeFuzzyMatchChange`（同 `subscribeLanguageChange` 模式）分别供词库 feature（含侧边栏）订阅
 - 控件类型全部走 `obsidian` 的 `SettingDefinitionItem`/`SettingGroupItem` 等声明式类型；`obsidian` 的值导入仅保留运行时需要的类（如 `PluginSettingTab`），其余一律 `import type`
 - 分组约定：通用设置组（语言、折叠）恒为内联 `group`；服务设置（`getSherpaItems`）、语音输入（`getRecognitionItems`）、手柄控制（`getGamepadItems`）与词库设置（`getLexiconItems`）经 `buildCollapsibleSection(name, desc, items)` 按 `settings.collapsible` 切换容器形态（开启时渲染为可导航子页 `page`，关闭时内联展开 `group`，`group` 需同时传 `name` 与 `heading`）；分组 `name` 优先用四字中文（如通用设置/服务设置，其他语言用对应译文），保证标题视觉对齐；条目增删只改 `getXxxItems`，不碰容器逻辑
@@ -178,7 +178,7 @@
 - `initSpeechRecognition`：注册命令 `toggle-speech-recognition`（名称 `commands.toggleRecognition`，插件不预设快捷键，用户自行绑定），并注册全局 `keyup` 监听兜底 push-to-talk 松键停止；返回 `() => controller.dispose()`
 - `SpeechController` 串行处理一次「录音→识别→投递」闭环：状态机 `idle/recording/transcribing`，`starting` 标志防双流泄漏，`generation` 代际号使卸载/重触发后的过期异步回包失效，`transcribeAbort` 取消在途识别；识别中再次触发经 `Notice` 拒绝，避免并发 WS 互相覆盖；过程提示按 `notificationMode` 分流（notice 常驻条变身、statusbar 状态栏计时电平、none 静默），开始录音时快照、中途切换下轮生效，异常通知不受模式影响
 - 触发语义：toggle 模式按一次开始、再按一次停止；push-to-talk 为过渡实现（Obsidian 快捷键只给 keydown，无 keyup），松开 `R`/`Alt` 或再按一次均停止
-- 录音前校验服务已运行与桌面端；单次录音上限 280s（服务端 300s 拒连），到时自动停止并走正常识别流程，不丢已录音频
+- 录音前校验服务已运行与桌面端；单次录音上限 280s（服务端 300s 拒连），到时自动停止并走正常识别流程，不丢已录音频；`vadAutoStop` 开启时按 RMS 双阈值判定静音（前导 8s/尾部取“静音时间”设置默认 2s，起步保护 0.5s），达线同样自动收尾，详见 `vad.ts`
 - 投递策略：Markdown 编辑器聚焦且为 source 模式时，经 `getCodeMirrorEditorView` 取 CM6 视图，用单事务 `dispatch`（`changes` + `selection` 置于末尾 + `effects: [setTargetsEffect.of(findTargets(text, from))]` 触发词库后处理高亮 + `scrollIntoView`）插入光标处，失败回退 `editor.replaceSelection`；无聚焦时写剪贴板；空结果视同未采集到音频；成功通报按通知通道分流（通知框弹提示/状态栏闪现 2 秒/静默），剪贴板回执三种模式都弹，各终态必先关过程提示
 - 麦克风错误按 `DOMException.name` 翻译（`NotAllowedError`→权限拒绝、`NotFoundError`/`OverconstrainedError`→设备缺失），其余透出原文
 
@@ -196,7 +196,7 @@
 - 无状态纯函数工具目录，无生命周期，不受模块三段式约束：单文件同时导出函数与类型，无 init 方法
 - `svelte.ts`：`mountComponent(target, component, ...args)` 将 Svelte 组件挂载到目标容器（如视图的 `contentEl`），先清空容器再挂载，返回 `{ instance, destroy() }`；destroy 卸载组件并清空容器。参数侧用 `{} extends Props` 分支重载：无 props 可省、有 props 必传。组件样式经构建配置 `css: "injected"` 注入 `<head>`，卸载后样式标签残留，但编译期 class 哈希保证样式隔离
 - `ambient.d.ts`：`*.svelte` 模块声明，tsc 层放宽 props 类型，精确类型由 svelte-check 校验（build 命令内执行）；不与 `svelte.ts` 同名——TS 对同名 .ts/.d.ts 只保留 .ts，且模块文件内 `declare module` 会被视为模块增强而非法
-- `audio.ts`：识别管线纯函数与常量——`TARGET_SAMPLE_RATE`(16k)/`WS_CHUNK_BYTES`(10240)/`CAPTURE_BUFFER_SIZE`(4096)，`downsampleFloat32Mono`（线性重采样）、`float32ToInt16Pcm`、`int16ToFloat32Normalized`、`mergeInt16Chunks`（合并分片）、`buildOfflineWsPayload`（组装 8 字节头 + float32 LE 请求体）
+- `audio.ts`：识别管线纯函数与常量——`TARGET_SAMPLE_RATE`(16k)/`WS_CHUNK_BYTES`(10240)/`CAPTURE_BUFFER_SIZE`(4096)，`downsampleFloat32Mono`（线性重采样）、`float32ToInt16Pcm`、`int16ToFloat32Normalized`、`chunkRmsLevel`（RMS 电平，供静音判断）、`mergeInt16Chunks`（合并分片）、`buildOfflineWsPayload`（组装 8 字节头 + float32 LE 请求体）
 - `cm-utils.ts`：`getCodeMirrorEditorView(editor)` 鸭子类型取 CM6 `EditorView`；`@codemirror/view` 外部化，仅 `import type` 零运行时成本，运行时逐层校验 `cm`/`dispatch`/`state`/`selection`/`main`/`from`/`to` 形态，不符返回 `null`
 - `pinyin.ts`：`toPinyin(text)` 中文转拼音，选项 `{ toneType: "none", v: true, nonZh: "removed" }`（无声调、ü→v、非汉字移除），并对结果折叠连续空白；供词库录入表单自动填充，词条拼音以此为存储格式
 - `transcript.ts`：`stripModelPrefix(text)` 剥离 Qwen3-ASR 偶发的 `language X<asr_text>` 输出前缀，供识别客户端回包解析使用

@@ -71,6 +71,10 @@ export interface LocalSpeechRecognitionPluginSettings {
   inputMode: SpeechInputMode;
   /** 状态通知方式：过程提示走通知框/状态栏/静默，异常通知不受影响 */
   notificationMode: NotificationMode;
+  /** 静音自动停止：录音中持续静音达到阈值时自动收尾走识别，默认关闭保持存量行为 */
+  vadAutoStop: boolean;
+  /** 静音时间（秒）：自动收尾等待的静音时长，1~5 秒 */
+  vadSilenceSeconds: number;
   /** 语音输入麦克风设备 id；空字符串表示系统默认设备 */
   microphoneDeviceId: string;
   /** 是否启用手柄：开启后可用手柄触发录音、移动光标与切换词库候选 */

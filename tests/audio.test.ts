@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildOfflineWsPayload,
+  chunkRmsLevel,
   downsampleFloat32Mono,
   float32ToInt16Pcm,
   int16ToFloat32Normalized,
@@ -41,6 +42,21 @@ describe("int16ToFloat32Normalized", () => {
     expect(output[0]).toBe(new Float32Array([32767 / 32768])[0]);
     expect(output[1]).toBe(-1);
     expect(output[2]).toBe(0);
+  });
+});
+
+describe("chunkRmsLevel", () => {
+  test("满幅与静音", () => {
+    expect(chunkRmsLevel(new Int16Array([32767, -32768]))).toBeGreaterThan(0.99);
+    expect(chunkRmsLevel(new Int16Array([0, 0]))).toBe(0);
+  });
+
+  test("恒定半幅恰为一半", () => {
+    expect(chunkRmsLevel(new Int16Array([16384, 16384]))).toBe(0.5);
+  });
+
+  test("空分片返回零", () => {
+    expect(chunkRmsLevel(new Int16Array(0))).toBe(0);
   });
 });
 

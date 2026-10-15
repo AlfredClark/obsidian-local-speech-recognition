@@ -4,13 +4,14 @@ import type { AudioCaptureSession } from "../../cores/audio-capture";
 import { transcribePcm16k } from "../../cores/sherpa-client";
 import { getSherpaServer } from "../../cores/sherpa-server";
 import { t } from "../../cores/i18n";
-import { int16ToFloat32Normalized, mergeInt16Chunks } from "../../utils/audio";
+import { chunkRmsLevel, int16ToFloat32Normalized, mergeInt16Chunks } from "../../utils/audio";
 import type LocalSpeechRecognitionPlugin from "../../main";
 import type { SpeechRecognitionState } from "./types";
 import { getCodeMirrorEditorView } from "../../utils/cm-utils";
 import { applyPreferredReplacements, findTargets, setTargetsEffect } from "../lexicon";
 import type { NotificationMode } from "../../cores/settings/types";
 import { chunkPeakLevel, renderRecordingStatus, renderTranscribingStatus, shouldShowResultNotice } from "./status-text";
+import { createVadState, updateVad, type VadState } from "./vad";
 
 /** 超长录音强制截断秒数：服务端 max-utterance-length 默认 300 秒，客户端提前截断避免被拒连 */
 const MAX_RECORDING_SECONDS = 280;
@@ -89,6 +90,8 @@ class SpeechController {
   private phaseStartedAt = 0;
   /** 平滑电平：分片峰值经衰减累积，仅状态栏模式计算 */
   private level = 0;
+  /** VAD 累积状态：每轮录音开始时重置，静音自停关闭时不更新 */
+  private vad: VadState = createVadState();
 
   constructor(
     plugin: LocalSpeechRecognitionPlugin,
@@ -194,6 +197,7 @@ class SpeechController {
     try {
       this.chunks = [];
       this.capturedSamples = 0;
+      this.vad = createVadState();
       const session = await startCapture(this.plugin.settings.microphoneDeviceId, (pcm16) => {
         if (generation !== this.generation) return;
         this.chunks.push(pcm16);
@@ -201,6 +205,12 @@ class SpeechController {
         // 状态栏电平：仅该模式累计峰值并衰减，其余模式跳过计算
         if (this.channel === "statusbar") {
           this.level = Math.max(chunkPeakLevel(pcm16), this.level * 0.6);
+        }
+        // 静音自停：开关默认关闭；尾部时长取“静音时间”设置，达线自动收尾走识别，不丢已录音频
+        const chunkMs = (pcm16.length / SAMPLES_PER_SECOND_16K) * 1000;
+        const trailingMs = this.plugin.settings.vadSilenceSeconds * 1000;
+        if (this.plugin.settings.vadAutoStop && updateVad(this.vad, chunkRmsLevel(pcm16), chunkMs, trailingMs)) {
+          void this.stopAndTranscribe();
         }
         // 超长截断：达到上限自动停并走正常识别流程，不丢已录音频
         if (this.capturedSamples >= MAX_RECORDING_SECONDS * SAMPLES_PER_SECOND_16K) {
