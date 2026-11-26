@@ -429,8 +429,8 @@ class CandidateNavigator {
       if (el === undefined) continue;
       const keys = (el.getAttribute("data-keys") ?? "").split(",").filter((key) => key !== "");
       if (keys.length === 0) continue;
-      let from = 0;
-      let to = 0;
+      let from: number;
+      let to: number;
       try {
         from = view.posAtDOM(el);
         to = view.posAtDOM(el, el.childNodes.length);

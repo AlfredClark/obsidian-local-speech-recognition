@@ -5,8 +5,18 @@ import { parser } from "typescript-eslint";
 import { globalIgnores, defineConfig } from "eslint/config";
 
 export default defineConfig(
-  globalIgnores(["node_modules", "dist", "esbuild.config.ts", "scripts/*.ts", "versions.json", "main.js", "tsconfig.json"]),
+  globalIgnores([
+    "node_modules",
+    "dist",
+    "esbuild.config.ts",
+    "scripts/*.ts",
+    "versions.json",
+    "main.js",
+    "tsconfig.json",
+    ".stylelintrc.json",
+  ]),
   {
+    files: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}", "**/*.svelte"],
     languageOptions: {
       parserOptions: {
         projectService: {
@@ -22,9 +32,10 @@ export default defineConfig(
   ...obsidianmd.configs.recommendedWithLocalesEn,
   ...svelte.configs["flat/recommended"],
   {
-    files: ["package.json"],
-    // package.json 以 json 语言解析（obsidianmd 官方块），无 svelte 解析上下文，
-    // svelte flat/recommended 中未限定 files 的规则会因 parserServices 缺失而崩溃
+    files: ["**/*.json", "LICENSE"],
+    // JSON/LICENSE 以 json/text 语言解析（obsidianmd 官方块），无 svelte 解析上下文，
+    // svelte flat/recommended 中未限定 files 的规则会因 parserServices 缺失而崩溃；
+    // 0.5.0 起 manifest.json/LICENSE 被纳入 lint，此关闭块需覆盖全部非 svelte 文件
     rules: Object.fromEntries(Object.keys(svelte.rules).map((name) => [`svelte/${name}`, "off"])),
   },
   {

@@ -80,7 +80,6 @@ export interface SherpaPathsCheck {
 export async function validateSherpaPaths(config: SherpaServerConfig): Promise<SherpaPathsCheck> {
   let fs: NodeFs;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- 桌面 CJS 插件加载 Node 内建模块的唯一可行路径
     fs = require("node:fs") as NodeFs;
   } catch {
     return { binary: null, missing: [] };
@@ -247,10 +246,8 @@ class SherpaServer implements SherpaServerManager {
     if (pathsDetail !== null) return { ok: false, detail: pathsDetail };
     // Obsidian 桌面端以 CJS 形式加载插件：Node 内建模块须走 require 同步加载；
     // 原生 import("node:child_process") 会被当作网络模块抓取而报 Failed to fetch。
-    // require 写法被 @typescript-eslint/no-require-imports 禁止，此处为桌面 CJS 唯一可行路径。
     let spawn: SpawnFn;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- 桌面 CJS 插件加载 Node 内建模块的唯一可行路径
       spawn = (require("child_process") as { spawn: SpawnFn }).spawn;
     } catch (error) {
       return { ok: false, detail: toErrorDetail(error) };
